@@ -1,0 +1,8 @@
+fastapi
+fastapi-utils
+python-multipart
+uvicorn[standard]
+gunicorn
+sqlalchemy
+pydantic
+docker
