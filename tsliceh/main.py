@@ -10,6 +10,9 @@
 import asyncio
 import datetime
 import os
+from time import sleep
+
+from dotenv import load_dotenv
 
 import docker
 from fastapi import FastAPI, Request, Depends
@@ -18,7 +21,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
 from starlette.responses import RedirectResponse
 
-from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables
+from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, create_docker_network
+
 
 app = FastAPI(root_path="")
 app.add_middleware(
@@ -33,10 +37,14 @@ engine = create_local_orm("sqlite:////tmp/3h_sessions.sqlite")
 create_tables(engine)
 orm_session_maker = create_session_factory(engine)
 
-
-nginx_container_name = None  # TODO Read from environment variable the name of nginx container relative to this container
-nginx_config_path = None  # TODO Read from environment the location of nginx.conf relative to this container
+load_dotenv()
+nginx_container_name = os.getenv(
+    'NGINX_NAME')  # TODO Read from environment variable the name of nginx container relative to this container
+nginx_config_path = os.getenv(
+    'NGINX_CONFIG_FILE')  # TODO Read from environment the location of nginx.conf relative to this container
 allowed_inactivity_time_in_seconds = 600  # TODO Read from environment
+network_name = os.getenv('NETWORK_NAME')
+network_id = create_docker_network(network_name)
 
 
 # Welcome & login page
@@ -76,7 +84,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 s.user = username
                 s.info = {}
                 s.last_activity = datetime.datetime.now()
-                s.url_path = f"{s.uuid}/"  # TODO Complete
+                # s.url_path = f"{s.uuid}/"  # TODO Complete
                 # Launch new container
                 launch_3dslicer_web_docker_container(s)
                 # Commit new
@@ -92,17 +100,43 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
 def refresh_nginx(sess, nginx_cfg_path, nginx_cont_name):
     def generate_nginx_conf():
         """ For each session, generate a section, plus the first part """
+        # https://github.com/peakwinter/python-nginx generador de nginx conf escrito en python
         # TODO "nginx.conf" prefix
         _ = """
-    ...    
+    user www-data;
+
+events {
+}
+
+http {
+  server {
+    listen     80;
+    server_name  localhost;
+
+    location / {
+      root   html;
+      index  index.html index.htm;
+    }
+
     """
         for s in sess.query(Session3DSlicer).all():
             # TODO Section doing reverse proxy magic
             _ += f"""
 
-            {s.uuid}
-            {s.url_path}
-
+            location /x11/{s.uuid}/ {{
+                  proxy_pass http://{s.url_path}x11/;
+                }}
+            
+                location /x11/{s.uuid}/websockify {{
+                  proxy_pass http://{s.url_path}x11/websockify;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "Upgrade";
+                  proxy_set_header Host $host;
+                }}
+            }}
+        }}
+            
     """
         if nginx_cfg_path:
             with open(nginx_cfg_path, "wt") as f:
@@ -113,8 +147,18 @@ def refresh_nginx(sess, nginx_cfg_path, nginx_cont_name):
         Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
         command it to reread the configuration.
         """
-        # TODO - nginx_cont_name
-        pass
+        dc = docker.from_env()
+        nginx = dc.containers.get(nginx_container_name)
+        if nginx:
+            if nginx.status == "running":
+                nginx.exec_run("/etc/init.d/nginx reload")
+            else:
+                # TODO DEBERÍA USAR DOCKER COMPOSE PARA HACER EL RELOAD? quizás ejecutar docker compose aquí...
+                #  y no tocará la API si está bien
+
+                nginx.reload()
+        else:
+            raise Exception("NO NGINX CONTAINER")
 
     # -----------------------------------------------
 
@@ -126,8 +170,33 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     """
     Launch a 3DSlicer web container
     """
-    # TODO
-    pass
+    # docker client:
+    active = False
+    dc = docker.from_env()
+    # just a container per user
+    container_name = s.user
+    # TODO use network_mode: "{container:name}" to connect the container to other
+    c = dc.containers.run(image="stevepieper/slicer-chronicle:4.10.2", ports={"8080/tcp":None}, network=network_id, detach=True)
+    container_id = c.id
+    # wait until active:
+    # active ornot..
+    while not active:
+        sleep(3)
+        c = dc.containers.get(container_id)
+        if c.status == "running":
+            active = True
+        if c.status == "exited":
+            print("container exited")
+            break
+    logs = c.logs
+    # todo error control
+    network = dc.networks.get(network_id)
+    ip = c.attrs['NetworkSettings']['Networks'][network.name]['IPAddress']
+    # port will be always 8080
+    tmp = list(c.ports.keys())[1]
+    port = tmp.split('/')[0]
+    s.container_name=container_name
+    s.url_path = f"{ip}:{port}/"  # full internal path?
 
 
 def stop_docker_container(s: Session3DSlicer):

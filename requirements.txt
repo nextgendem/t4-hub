@@ -6,3 +6,4 @@ gunicorn
 sqlalchemy
 pydantic
 docker
+jinja2
