@@ -1,9 +1,12 @@
 import datetime
 import uuid
 
+import docker
+from docker.errors import APIError
 from sqlalchemy import Column, JSON, Boolean, String, DateTime, TypeDecorator, CHAR
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
+
 
 
 class GUID(TypeDecorator):
@@ -79,3 +82,30 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
     if False in table_existence:
         declarative_base_.metadata.bind = engine_
         declarative_base_.metadata.create_all()
+
+
+def create_docker_network(network_name):
+    """
+    A partir del nomber de red que aparece en .env crea una red.
+    En el paso de que se hayan creado varias reds con este nombre, las borra y crea una nueva.
+    :param network_name:
+    :return: network_id
+    TODO revisar si viene bien hacer borrón y cuenta nueva
+    """
+    dc = docker.from_env()
+    # print("networks inside container " + dc.networks.list(names = network_name))
+    networks_list = dc.networks.list(names = network_name)
+    if len(networks_list)>0:
+       if len(networks_list) > 1:
+            for network in networks_list:
+                # check if there are containers attached to the network
+                if len(network.containers) == 0:
+                    network.remove()
+                networks_list = dc.networks.list(names = network_name)
+    if len(networks_list) == 1:
+        return networks_list[0].id
+    elif len(networks_list) == 0:
+        network = dc.networks.create(network_name, driver="bridge")
+        return network.id
+    else:
+        raise APIError(500, details = f"There is more than one {network_name} network active")
