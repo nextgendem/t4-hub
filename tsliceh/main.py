@@ -6,6 +6,9 @@
   - Integrate with a reverse proxy providing a single entry point for the users
   - Provide a way to share 3DSlicer instances
   - Persistent storage for new containers
+
+  Documentation:
+- https://docker-py.readthedocs.io/en/stable/
 """
 import asyncio
 import datetime
@@ -42,6 +45,7 @@ nginx_container_name = os.getenv(
     'NGINX_NAME')  # TODO Read from environment variable the name of nginx container relative to this container
 nginx_config_path = os.getenv(
     'NGINX_CONFIG_FILE')  # TODO Read from environment the location of nginx.conf relative to this container
+index_path = os.getenv('INDEX_PATH')
 allowed_inactivity_time_in_seconds = 600  # TODO Read from environment
 network_name = os.getenv('NETWORK_NAME')
 network_id = create_docker_network(network_name)
@@ -54,6 +58,12 @@ async def welcome_and_login_page(request: Request):
     _ = dict(request=request)
     return templates.TemplateResponse("login.html", _)
 
+
+@app.get("/")
+async def user_index_page(request: Request):
+    # Jinja2 template with a simple redirect page
+    _ = dict(request=request)
+    return templates.TemplateResponse("index.html", _)
 
 @app.get("/redirect_example")
 async def redirect_example(request: Request):
@@ -84,15 +94,19 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 s.user = username
                 s.info = {}
                 s.last_activity = datetime.datetime.now()
-                # s.url_path = f"{s.uuid}/"  # TODO Complete
+                session.add(s)
+                session.flush()
+                s.url_path = f"/x11/{s.uuid}/vnc.html?resize=remote&path=x11/{s.uuid}/websockify/"
                 # Launch new container
                 launch_3dslicer_web_docker_container(s)
                 # Commit new
                 session.add(s)
                 session.commit()
                 # Update nginx.conf and reread Nginx configuration
+                refresh_html(session)
                 refresh_nginx(session, nginx_config_path, nginx_container_name)
-            return RedirectResponse(url='/redirect_example', status_code=302)  # TODO URL ??
+                sleep(3)
+            return RedirectResponse(url=f"http://localhost{s.url_path}", status_code=302)  # TODO URL ??
         else:
             raise Exception(f"User {username} not authorized to open a 3DSlicer session")
 
@@ -100,10 +114,9 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
 def refresh_nginx(sess, nginx_cfg_path, nginx_cont_name):
     def generate_nginx_conf():
         """ For each session, generate a section, plus the first part """
-        # https://github.com/peakwinter/python-nginx generador de nginx conf escrito en python
         # TODO "nginx.conf" prefix
         _ = """
-    user www-data;
+user www-data;
 
 events {
 }
@@ -123,21 +136,22 @@ http {
             # TODO Section doing reverse proxy magic
             _ += f"""
 
-            location /x11/{s.uuid}/ {{
-                  proxy_pass http://{s.url_path}x11/;
-                }}
-            
-                location /x11/{s.uuid}/websockify {{
-                  proxy_pass http://{s.url_path}x11/websockify;
-                  proxy_http_version 1.1;
-                  proxy_set_header Upgrade $http_upgrade;
-                  proxy_set_header Connection "Upgrade";
-                  proxy_set_header Host $host;
-                }}
-            }}
+    location /x11/{s.uuid}/ {{
+          proxy_pass http://{s.service_address}/x11/;
         }}
-            
+    
+    location /x11/{s.uuid}/websockify {{
+      proxy_pass http://{s.service_address}/x11/websockify;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "Upgrade";
+      proxy_set_header Host $host;
+    }}        
     """
+        _ += """
+    }
+}
+        """
         if nginx_cfg_path:
             with open(nginx_cfg_path, "wt") as f:
                 f.write(_)
@@ -152,11 +166,16 @@ http {
         if nginx:
             if nginx.status == "running":
                 nginx.exec_run("/etc/init.d/nginx reload")
-            else:
-                # TODO DEBERÍA USAR DOCKER COMPOSE PARA HACER EL RELOAD? quizás ejecutar docker compose aquí...
-                #  y no tocará la API si está bien
-
                 nginx.reload()
+            else:
+                """
+                Para hacer un restart utilizando docker compose hay un proyecto https://pypi.org/project/python-on-whales/ 
+                """
+                # TODO TERMINAR
+                nginx.restart()
+                sleep(3)
+                nginx.reload()
+
         else:
             raise Exception("NO NGINX CONTAINER")
 
@@ -165,6 +184,24 @@ http {
     generate_nginx_conf()
     command_nginx_to_read_configuration()
 
+def refresh_html(sess):
+    _ = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>3DSlicer Sessions:</title>
+</head>
+
+    """
+    for s in sess.query(Session3DSlicer).all():
+        # TODO Section doing reverse proxy magic
+        _ += f"""
+
+<a href=http://localhost{s.url_path}>{s.user}</a><br>
+    """
+    if index_path:
+        with open(index_path, "wt") as f:
+            f.write(_)
 
 def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     """
@@ -176,7 +213,7 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     # just a container per user
     container_name = s.user
     # TODO use network_mode: "{container:name}" to connect the container to other
-    c = dc.containers.run(image="stevepieper/slicer-chronicle:4.10.2", ports={"8080/tcp":None}, network=network_id, detach=True)
+    c = dc.containers.run(image="stevepieper/slicer-chronicle:4.10.2", ports={"8080/tcp":None}, name=container_name, network=network_id, detach=True)
     container_id = c.id
     # wait until active:
     # active ornot..
@@ -196,7 +233,7 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     tmp = list(c.ports.keys())[1]
     port = tmp.split('/')[0]
     s.container_name=container_name
-    s.url_path = f"{ip}:{port}/"  # full internal path?
+    s.service_address = f"{ip}:{port}/"  # full internal path?
 
 
 def stop_docker_container(s: Session3DSlicer):
@@ -215,6 +252,7 @@ def stop_docker_container(s: Session3DSlicer):
 
 def docker_container_pct_activity(container_id):
     def container_exists(name):
+        # TODO necesaria?
         """
         Check if container exists (if not, it needs to be created)
 
@@ -239,8 +277,21 @@ def docker_container_pct_activity(container_id):
     :param container_id:
     :return:
     """
-    # TODO
+    # dc = docker.from_env()
+    # c = dc.containers.get(container_id)
+    # name = c.name # if name is null the container does not exists
+    # if container_exists(name):
+    #     if c.status == "runnung":
+    #         stats = c.stats
+
     return 6
+
+def check_ips():
+    dc = docker.from_env()
+    network = dc.networks.get(network_id)
+    for container in network.containers:
+        print(f"{container.name} : {container.attrs['NetworkSettings']['Networks'][network.name]['IPAddress']}")
+
 
 
 class BackgroundRunner:
@@ -273,6 +324,7 @@ class BackgroundRunner:
         sess.commit()
         # Update nginx.conf and reread Nginx configuration
         refresh_nginx(sess, nginx_config_path, nginx_container_name)
+        refresh_html(sess)
 
         while True:
             sess = self.session_maker()
@@ -284,6 +336,7 @@ class BackgroundRunner:
                     sess.delete(s)
                     # Update nginx.conf and reread Nginx configuration
                     refresh_nginx(sess, nginx_config_path, nginx_container_name)
+                    refresh_html(sess)
 
             sess.commit()
             await asyncio.sleep(60)

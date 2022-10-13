@@ -8,6 +8,10 @@ from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 
 
+from ldap3 import Server, Connection, ALL, SUBTREE
+from ldap3.core.exceptions import LDAPException, LDAPBindError
+
+
 
 class GUID(TypeDecorator):
     """Platform-independent GUID type.
@@ -57,7 +61,8 @@ class Session3DSlicer(SQLAlchemyBase):
     created_at = Column(DateTime, default=datetime.datetime.now())
     last_activity = Column(DateTime, nullable=True)
     user = Column(String(64), unique=True, nullable=False)
-    url_path = Column(String(1024), nullable=False)
+    url_path = Column(String(1024), nullable=True)
+    service_address = Column(String(1024), nullable=True)
     container_name = Column(String(128), nullable=True)
     restart = Column(Boolean, nullable=False, default=False)
     info = Column(JSON)
@@ -82,6 +87,45 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
     if False in table_existence:
         declarative_base_.metadata.bind = engine_
         declarative_base_.metadata.create_all()
+
+
+def connect_ldap_server():
+
+    try:
+
+        # Provide the hostname and port number of the openLDAP
+        # TODO FIND ldap ip
+        server_uri = f"ldap://192.168.1.3:389"
+        server = Server(server_uri, get_info=ALL)
+        # username and password can be configured during openldap setup
+        connection = Connection(server,
+                                user='cn=admin,dc=testldap,dc=com',
+                                password=PASSWORD)
+        bind_response = connection.bind() # Returns True or False
+    except LDAPBindError as e:
+        connection = e
+
+# For groups provide a groupid number instead of a uidNumber
+def get_ldap_users():
+
+    # Provide a search base to search for.
+    search_base = 'dc=testldap,dc=com'
+    # provide a uidNumber to search for. '*" to fetch all users/groups
+    search_filter = '(uidNumber=500)'
+
+    # Establish connection to the server
+    ldap_conn = connect_ldap_server()
+    try:
+        # only the attributes specified will be returned
+        ldap_conn.search(search_base=search_base,
+                         search_filter=search_filter,
+                         search_scope=SUBTREE,
+                         attributes=['cn','sn','uid','uidNumber'])
+        # search will not return any values.
+        # the entries method in connection object returns the results
+        results = connection.entries
+    except LDAPException as e:
+        results = e
 
 
 def create_docker_network(network_name):
