@@ -7,3 +7,6 @@ sqlalchemy
 pydantic
 docker
 jinja2
+python_on_whales
+ldap3
+python-dotenv

@@ -8,9 +8,9 @@ from sqlalchemy import Column, JSON, Boolean, String, DateTime, TypeDecorator, C
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 
-# from ldap3 import Server, Connection, ALL, SUBTREE
-# from ldap3.core.exceptions import LDAPException, LDAPBindError
-#
+from ldap3 import Server, Connection, ALL, SUBTREE
+from ldap3.core.exceptions import LDAPException, LDAPBindError
+
 from tsliceh.helpers import containers_status
 
 
@@ -90,31 +90,40 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
         declarative_base_.metadata.create_all()
 
 
-# def connect_ldap_server():
+# def connect_ldap_server(ldap_adress):
+#     """
+#     https://medium.com/analytics-vidhya/crud-operations-for-openldap-using-python-ldap3-46393e3122af
+#     :param ldap_adress:
+#     :return:
+#     """
 #     try:
 #
 #         # Provide the hostname and port number of the openLDAP
 #         # TODO FIND ldap ip
-#         server_uri = f"ldap://192.168.1.3:389"
+#         server_uri = f"ldap://{ldap_adress}"
 #         server = Server(server_uri, get_info=ALL)
 #         # username and password can be configured during openldap setup
 #         connection = Connection(server,
-#                                 user='cn=admin,dc=testldap,dc=com',
-#                                 password=PASSWORD)
+#                                 user='cn=admin,dc=opendx,dc=org',
+#                                 password="admin_pass")
 #         bind_response = connection.bind()  # Returns True or False
 #     except LDAPBindError as e:
 #         connection = e
 #
 #
 # # For groups provide a groupid number instead of a uidNumber
-# def get_ldap_users():
+# def get_ldap_users(ldap_adress):
+#     """
+#     https://medium.com/analytics-vidhya/crud-operations-for-openldap-using-python-ldap3-46393e3122af
+#     :return:
+#     """
 #     # Provide a search base to search for.
 #     search_base = 'dc=testldap,dc=com'
 #     # provide a uidNumber to search for. '*" to fetch all users/groups
 #     search_filter = '(uidNumber=500)'
 #
 #     # Establish connection to the server
-#     ldap_conn = connect_ldap_server()
+#     ldap_conn = connect_ldap_server(ldap_adress)
 #     try:
 #         # only the attributes specified will be returned
 #         ldap_conn.search(search_base=search_base,
@@ -134,7 +143,7 @@ def docker_compose_up():
         status = containers_status(container.name)
         print(f"{container.name} : {status}")
         if status == "exited":
-            raise APIError(500, f"Error running {container.name} : status : {status} \n logs: {container.logs(tail=10)}")
+            raise APIError(500, f"Error running {container.name} : status : {status}")
 
 
 def create_docker_network(network_name):

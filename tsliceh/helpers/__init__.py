@@ -26,6 +26,11 @@ def get_container_internal_adress(name_id, network_id):
     return f"{ip}:{port}"
 
 
+def container_exists(name_id):
+    # TODO CHECK IF CONTAINER EXISTS
+    pass
+
+
 def containers_status(name_id):
     """
     Check if a container exist is running or exited or in case just created it waits until creation period is over
@@ -33,17 +38,16 @@ def containers_status(name_id):
     :return: None, "runnung" or "exited
     """
     dc = docker.from_env()
-    c = dc.containers.get(name_id)
-    if c:
-        while True:
-            status = c.status
-            if status == "running" or "exited":
-                return status
-            else:
-                sleep(3)
-                c.reload()
-    else:
-        return c
+    try:
+        c = dc.containers.get(name_id)
+        status = c.status
+        if status == "running" or "exited":
+            return status
+        else:
+            sleep(3)
+            c.reload()
+    except:
+        return None
 
 
 def check_ips(network_id):

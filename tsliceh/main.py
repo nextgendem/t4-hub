@@ -24,8 +24,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
 from starlette.responses import RedirectResponse
 
-from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, create_docker_network
-
+from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, create_docker_network, \
+    docker_compose_up
+from helpers import get_container_ip, get_container_internal_adress, containers_status, containers_cpu_percent_dict, \
+    container_stats, calculate_cpu_percent
 
 app = FastAPI(root_path="")
 app.add_middleware(
@@ -48,7 +50,10 @@ nginx_config_path = os.getenv(
 index_path = os.getenv('INDEX_PATH')
 allowed_inactivity_time_in_seconds = 600  # TODO Read from environment
 network_name = os.getenv('NETWORK_NAME')
+docker_compose_up()
 network_id = create_docker_network(network_name)
+tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id)
+openldap_adress =  get_container_internal_adress(os.getenv("OPENLDAP_NAME"), network_id)
 
 
 # Welcome & login page
@@ -64,6 +69,7 @@ async def user_index_page(request: Request):
     # Jinja2 template with a simple redirect page
     _ = dict(request=request)
     return templates.TemplateResponse("index.html", _)
+
 
 @app.get("/redirect_example")
 async def redirect_example(request: Request):
@@ -115,21 +121,21 @@ def refresh_nginx(sess, nginx_cfg_path, nginx_cont_name):
     def generate_nginx_conf():
         """ For each session, generate a section, plus the first part """
         # TODO "nginx.conf" prefix
-        _ = """
+        _ = f"""
 user www-data;
 
-events {
-}
+events {{
+}}
 
-http {
-  server {
+http {{
+  server {{
     listen     80;
     server_name  localhost;
 
-    location / {
+    location / {{
       root   html;
       index  index.html index.htm;
-    }
+    }}
 
     """
         for s in sess.query(Session3DSlicer).all():
@@ -161,28 +167,24 @@ http {
         Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
         command it to reread the configuration.
         """
-        dc = docker.from_env()
-        nginx = dc.containers.get(nginx_container_name)
-        if nginx:
-            if nginx.status == "running":
-                nginx.exec_run("/etc/init.d/nginx reload")
-                nginx.reload()
+        tries = 0
+        while tries < 6:
+            status = containers_status(nginx_container_name)
+            if status == "running":
+                dc = docker.from_env()
+                nginx = dc.containers.get(nginx_container_name)
+                r = nginx.exec_run("/etc/init.d/nginx reload")
+                return r
             else:
-                """
-                Para hacer un restart utilizando docker compose hay un proyecto https://pypi.org/project/python-on-whales/ 
-                """
-                # TODO TERMINAR
-                nginx.restart()
-                sleep(3)
-                nginx.reload()
-
-        else:
-            raise Exception("NO NGINX CONTAINER")
+                docker_compose_up()
+                tries = +1
+        raise Exception(500, "Error when reloading nginx.conf")
 
     # -----------------------------------------------
 
     generate_nginx_conf()
     command_nginx_to_read_configuration()
+
 
 def refresh_html(sess):
     _ = """
@@ -203,6 +205,7 @@ def refresh_html(sess):
         with open(index_path, "wt") as f:
             f.write(_)
 
+
 def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     """
     Launch a 3DSlicer web container
@@ -212,12 +215,13 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     dc = docker.from_env()
     # just a container per user
     container_name = s.user
-    # TODO use network_mode: "{container:name}" to connect the container to other
-    c = dc.containers.run(image="stevepieper/slicer-chronicle:4.10.2", ports={"8080/tcp":None}, name=container_name, network=network_id, detach=True)
+    c = dc.containers.run(image="stevepieper/slicer-chronicle:4.10.2", ports={"8080/tcp": None}, name=container_name,
+                          network=network_id, detach=True)
     container_id = c.id
     # wait until active:
     # active ornot..
     while not active:
+        # TODO mejorar: crear funcion check_state
         sleep(3)
         c = dc.containers.get(container_id)
         if c.status == "running":
@@ -227,70 +231,58 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
             break
     logs = c.logs
     # todo error control
-    network = dc.networks.get(network_id)
-    ip = c.attrs['NetworkSettings']['Networks'][network.name]['IPAddress']
-    # port will be always 8080
-    tmp = list(c.ports.keys())[1]
-    port = tmp.split('/')[0]
-    s.container_name=container_name
-    s.service_address = f"{ip}:{port}/"  # full internal path?
+    s.service_address = get_container_internal_adress(c.id, network_id)
+    s.container_name = container_name
 
 
 def stop_docker_container(s: Session3DSlicer):
+    """
+    in certain session, stop container when:
+    - session expires
+    - order from user
+    - order from administrator
+    :param s: session
+    :return:
+    """
+    # TODO MANAGE THOSE PRINTS
     dc = docker.from_env()
     c = dc.containers.get(s.container_name)
     can_remove = False
-    if c.status == "running":
-        try:
-            c.stop(timeout=60)
-            can_remove = True
-        except:
-            pass
+    status = containers_status(c.id)
+    if status:
+        if status == "running":
+            try:
+                c.stop()
+                c.reload()
+                can_remove = True
+            except:
+                can_remove = False
+                print(f"can't stop container{s.container_name}")
     if c.status == "exited" or can_remove:
         c.remove()
+        status = containers_status(s.container_name)
+        if not status:
+            print(f"container{s.container_name} : removed")
+        else:
+            print(f"can't remove {s.container_name}")
 
 
-def docker_container_pct_activity(container_id):
-    def container_exists(name):
-        # TODO necesaria?
-        """
-        Check if container exists (if not, it needs to be created)
-
-        AN EXAMPLE OF "DOCKER" PACKAGE USAGE
-
-        :param name:
-        :return:
-        """
-        try:
-            dc = docker.from_env()
-            c = dc.containers.get(name)
-            exists = True
-            c.status  # created, exited, running
-        except docker.errors.NotFound:
-            exists = False
-        return exists
-
+def docker_container_pct_activity(container_id_name):
     """
     Obtain the percentage of activity of a container
     -1 if the container does not exist
 
-    :param container_id:
-    :return:
+    :param container_id_name: container id or name
+    :return: -c if such container does not exist or real cpu percentage
     """
-    # dc = docker.from_env()
-    # c = dc.containers.get(container_id)
-    # name = c.name # if name is null the container does not exists
-    # if container_exists(name):
-    #     if c.status == "runnung":
-    #         stats = c.stats
-
-    return 6
-
-def check_ips():
     dc = docker.from_env()
-    network = dc.networks.get(network_id)
-    for container in network.containers:
-        print(f"{container.name} : {container.attrs['NetworkSettings']['Networks'][network.name]['IPAddress']}")
+    try:
+        c = dc.containers.get(container_id_name)
+        stats = container_stats(c.id)
+        return calculate_cpu_percent(stats)
+
+    except:
+        return -1
 
 
 
@@ -299,8 +291,8 @@ class BackgroundRunner:
         self.session_maker = None
 
     async def check_session_activity(self, s: Session3DSlicer, db_sess):
-        container_id = s.uuid
-        pct = docker_container_pct_activity(container_id)
+        container = s.container_name
+        pct = docker_container_pct_activity(s.container_name)
         ahora = datetime.datetime.now()
         if pct > 10:
             s.last_activity = ahora
@@ -314,8 +306,8 @@ class BackgroundRunner:
         # Start 3D Slicer sessions if we are back from a restart of the container
         sess = self.session_maker()
         for s in sess.query(Session3DSlicer).all():
-            container_id = s.uuid
-            pct = docker_container_pct_activity(container_id)
+            pct = docker_container_pct_activity(s.container_name)
+            print(f"pct container: {s.container_name}: {pct} ")
             if pct < 0:
                 if s.restart:
                     launch_3dslicer_web_docker_container(s)
@@ -332,7 +324,7 @@ class BackgroundRunner:
             for s in sess.query(Session3DSlicer).all():
                 stop = await self.check_session_activity(s, sess)
                 if stop:
-                    await stop_docker_container(s)
+                    stop_docker_container(s)
                     sess.delete(s)
                     # Update nginx.conf and reread Nginx configuration
                     refresh_nginx(sess, nginx_config_path, nginx_container_name)
