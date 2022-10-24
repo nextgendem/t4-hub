@@ -6,3 +6,6 @@ data/certificates/
 proxy/nginx.conf
 
 tsliceh/templates/index.html
+
+data/
+restar4testing.sh

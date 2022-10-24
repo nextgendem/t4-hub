@@ -23,7 +23,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
 from starlette.responses import RedirectResponse
-
+import python_on_whales as docker_ow
+import ldap3
+from ldap3.core.exceptions import LDAPException
 from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, create_docker_network, \
     docker_compose_up
 from helpers import get_container_ip, get_container_internal_adress, containers_status, containers_cpu_percent_dict, \
@@ -53,7 +55,8 @@ network_name = os.getenv('NETWORK_NAME')
 docker_compose_up()
 network_id = create_docker_network(network_name)
 tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id)
-openldap_adress =  get_container_internal_adress(os.getenv("OPENLDAP_NAME"), network_id)
+ldap_adress = get_container_internal_adress(os.getenv("OPENLDAP_NAME"), network_id)
+ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 
 
 # Welcome & login page
@@ -79,7 +82,14 @@ async def redirect_example(request: Request):
 
 
 async def check_credentials(user, password):
-    return True  # TODO LDAP
+    try:
+        with ldap3.Connection('localhost', user=f"uid={user},{ldap_base}", password=password,
+                              read_only=True) as conn:
+            print(conn.result["description"])  # "success" if bind is ok
+            return True
+    except LDAPException:
+        print('Unable to connect to LDAP server')
+        return False
 
 
 async def can_open_session(user):
@@ -174,6 +184,7 @@ http {{
                 dc = docker.from_env()
                 nginx = dc.containers.get(nginx_container_name)
                 r = nginx.exec_run("/etc/init.d/nginx reload")
+                # TODO check output
                 return r
             else:
                 docker_compose_up()
@@ -235,18 +246,18 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     s.container_name = container_name
 
 
-def stop_docker_container(s: Session3DSlicer):
+def stop_docker_container(name):
     """
     in certain session, stop container when:
     - session expires
     - order from user
     - order from administrator
-    :param s: session
+    :param name:
     :return:
     """
     # TODO MANAGE THOSE PRINTS
     dc = docker.from_env()
-    c = dc.containers.get(s.container_name)
+    c = dc.containers.get(name)
     can_remove = False
     status = containers_status(c.id)
     if status:
@@ -257,14 +268,14 @@ def stop_docker_container(s: Session3DSlicer):
                 can_remove = True
             except:
                 can_remove = False
-                print(f"can't stop container{s.container_name}")
+                print(f"can't stop container{name}")
     if c.status == "exited" or can_remove:
         c.remove()
-        status = containers_status(s.container_name)
+        status = containers_status(name)
         if not status:
-            print(f"container{s.container_name} : removed")
+            print(f"container{name} : removed")
         else:
-            print(f"can't remove {s.container_name}")
+            print(f"can't remove {name}")
 
 
 def docker_container_pct_activity(container_id_name):
@@ -283,7 +294,6 @@ def docker_container_pct_activity(container_id_name):
 
     except:
         return -1
-
 
 
 class BackgroundRunner:
@@ -324,7 +334,7 @@ class BackgroundRunner:
             for s in sess.query(Session3DSlicer).all():
                 stop = await self.check_session_activity(s, sess)
                 if stop:
-                    stop_docker_container(s)
+                    stop_docker_container(s.container_name)
                     sess.delete(s)
                     # Update nginx.conf and reread Nginx configuration
                     refresh_nginx(sess, nginx_config_path, nginx_container_name)
@@ -333,6 +343,23 @@ class BackgroundRunner:
             sess.commit()
             await asyncio.sleep(60)
 
+    async def delete_lost_containers(self, sm):
+        self.session_maker = sm
+        sess = self.session_maker()
+        dc = docker.from_env()
+        try:
+            compose_containers = [c.name for c in docker_ow.compose.ps()]
+            tdslicer_containers = [c.name for c in dc.containers.list(all)]
+        except:
+            return None
+        users = [sess.user for s in sess.query(Session3DSlicer).all()]
+        for c in compose_containers:
+            if compose_containers in tdslicer_containers:
+                tdslicer_containers.remove(compose_containers)
+        for name in tdslicer_containers:
+            stop_docker_container(name)
+            await asyncio.sleep(200)
+
 
 runner = BackgroundRunner()
 
@@ -340,8 +367,10 @@ runner = BackgroundRunner()
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(runner.sessions_checker(orm_session_maker))
+    asyncio.create_task(runner.delete_lost_containers(orm_session_maker))
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0")

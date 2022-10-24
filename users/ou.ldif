@@ -1,0 +1,10 @@
+dn: ou=jupyterhub,dc=opendx,dc=org
+objectClass: top
+objectClass: organizationalUnit
+ou: jupyterhub
+
+dn: ou=dhis2,dc=opendx,dc=org
+objectClass: top
+objectClass: organizationalUnit
+ou: dhis2
+

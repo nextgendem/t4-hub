@@ -100,7 +100,7 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
 #
 #         # Provide the hostname and port number of the openLDAP
 #         # TODO FIND ldap ip
-#         server_uri = f"ldap://{ldap_adress}"
+#         server_uri = ldap_adress
 #         server = Server(server_uri, get_info=ALL)
 #         # username and password can be configured during openldap setup
 #         connection = Connection(server,
@@ -109,13 +109,16 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
 #         bind_response = connection.bind()  # Returns True or False
 #     except LDAPBindError as e:
 #         connection = e
+#         return connection
 #
 #
-# # For groups provide a groupid number instead of a uidNumber
+# #
+# # # For groups provide a groupid number instead of a uidNumber
 # def get_ldap_users(ldap_adress):
 #     """
 #     https://medium.com/analytics-vidhya/crud-operations-for-openldap-using-python-ldap3-46393e3122af
 #     :return:
+#     :ldap_adress: interal IP of the container
 #     """
 #     # Provide a search base to search for.
 #     search_base = 'dc=testldap,dc=com'
@@ -126,13 +129,12 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
 #     ldap_conn = connect_ldap_server(ldap_adress)
 #     try:
 #         # only the attributes specified will be returned
-#         ldap_conn.search(search_base=search_base,
-#                          search_filter=search_filter,
-#                          search_scope=SUBTREE,
-#                          attributes=['cn', 'sn', 'uid', 'uidNumber'])
+#         ldap_conn.searchsearch('dc=opendx,dc=org', '(uid=*)',
+#                                attributes=['sn', 'cn', 'homeDirectory'],
+#                                size_limit=0)
 #         # search will not return any values.
 #         # the entries method in connection object returns the results
-#         results = connection.entries
+#         results = ldap_conn.entries
 #     except LDAPException as e:
 #         results = e
 
