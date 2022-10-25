@@ -27,8 +27,9 @@ import python_on_whales as docker_ow
 import ldap3
 from ldap3.core.exceptions import LDAPException
 from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, create_docker_network, \
-    docker_compose_up
-from helpers import get_container_ip, get_container_internal_adress, containers_status, containers_cpu_percent_dict, \
+    docker_compose_up, refresh_nginx, pull_tdslicer_image
+from tsliceh.helpers import get_container_ip, get_container_internal_adress, containers_status, \
+    containers_cpu_percent_dict, \
     container_stats, calculate_cpu_percent
 
 app = FastAPI(root_path="")
@@ -52,11 +53,14 @@ nginx_config_path = os.getenv(
 index_path = os.getenv('INDEX_PATH')
 allowed_inactivity_time_in_seconds = 600  # TODO Read from environment
 network_name = os.getenv('NETWORK_NAME')
-docker_compose_up()
+# docker_compose_up()
 network_id = create_docker_network(network_name)
 tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id)
-ldap_adress = get_container_internal_adress(os.getenv("OPENLDAP_NAME"), network_id)
+ldap_adress = get_container_ip(os.getenv("OPENLDAP_NAME"), network_id) + ":389"
+tdslicer_image_tag = "4.10.2"
+tdslicer_image_name = "stevepieper/slicer-chronicle"
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
+refresh_nginx(None, nginx_config_path, nginx_container_name)
 
 
 # Welcome & login page
@@ -83,7 +87,7 @@ async def redirect_example(request: Request):
 
 async def check_credentials(user, password):
     try:
-        with ldap3.Connection('localhost', user=f"uid={user},{ldap_base}", password=password,
+        with ldap3.Connection(ldap_adress, user=f"uid={user},{ldap_base}", password=password,
                               read_only=True) as conn:
             print(conn.result["description"])  # "success" if bind is ok
             return True
@@ -127,76 +131,6 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
             raise Exception(f"User {username} not authorized to open a 3DSlicer session")
 
 
-def refresh_nginx(sess, nginx_cfg_path, nginx_cont_name):
-    def generate_nginx_conf():
-        """ For each session, generate a section, plus the first part """
-        # TODO "nginx.conf" prefix
-        _ = f"""
-user www-data;
-
-events {{
-}}
-
-http {{
-  server {{
-    listen     80;
-    server_name  localhost;
-
-    location / {{
-      root   html;
-      index  index.html index.htm;
-    }}
-
-    """
-        for s in sess.query(Session3DSlicer).all():
-            # TODO Section doing reverse proxy magic
-            _ += f"""
-
-    location /x11/{s.uuid}/ {{
-          proxy_pass http://{s.service_address}/x11/;
-        }}
-    
-    location /x11/{s.uuid}/websockify {{
-      proxy_pass http://{s.service_address}/x11/websockify;
-      proxy_http_version 1.1;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "Upgrade";
-      proxy_set_header Host $host;
-    }}        
-    """
-        _ += """
-    }
-}
-        """
-        if nginx_cfg_path:
-            with open(nginx_cfg_path, "wt") as f:
-                f.write(_)
-
-    def command_nginx_to_read_configuration():
-        """
-        Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
-        command it to reread the configuration.
-        """
-        tries = 0
-        while tries < 6:
-            status = containers_status(nginx_container_name)
-            if status == "running":
-                dc = docker.from_env()
-                nginx = dc.containers.get(nginx_container_name)
-                r = nginx.exec_run("/etc/init.d/nginx reload")
-                # TODO check output
-                return r
-            else:
-                docker_compose_up()
-                tries = +1
-        raise Exception(500, "Error when reloading nginx.conf")
-
-    # -----------------------------------------------
-
-    generate_nginx_conf()
-    command_nginx_to_read_configuration()
-
-
 def refresh_html(sess):
     _ = """
 <!DOCTYPE html>
@@ -226,11 +160,14 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     dc = docker.from_env()
     # just a container per user
     container_name = s.user
-    c = dc.containers.run(image="stevepieper/slicer-chronicle:4.10.2", ports={"8080/tcp": None}, name=container_name,
+    print("::::::::::::::::::::::::CREATING NEW CONTAINER:::::::::::::::::::::::::::::::::")
+    pull_tdslicer_image(tdslicer_image_name, tdslicer_image_tag)
+    c = dc.containers.run(image=f"{tdslicer_image_name}:{tdslicer_image_tag}", ports={"8080/tcp": None},
+                          name=container_name,
                           network=network_id, detach=True)
     container_id = c.id
     # wait until active:
-    # active ornot..
+    # active or not..
     while not active:
         # TODO mejorar: crear funcion check_state
         sleep(3)
@@ -244,6 +181,7 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     # todo error control
     s.service_address = get_container_internal_adress(c.id, network_id)
     s.container_name = container_name
+    print(f"::::::::::::::::::::::::::container{c.name} : {c.status} in {s.service_address}::::::::::::::::::::::::::::::::::::")
 
 
 def stop_docker_container(name):
@@ -273,9 +211,9 @@ def stop_docker_container(name):
         c.remove()
         status = containers_status(name)
         if not status:
-            print(f"container{name} : removed")
+            print(f"::::::::::::::::::::::::::::::container{name} : removed::::::::::::::::::::::::::::::::::")
         else:
-            print(f"can't remove {name}")
+            print(f":::::::::::::::::::::::::::::::::::::::can't remove {name}:::::::::::::::::::::::::::::::")
 
 
 def docker_container_pct_activity(container_id_name):

@@ -10,6 +10,7 @@ services:
 
   proxy:
     image: opendx/nginx
+    container_name: ${NGINX_NAME}
     build:
       context: ./proxy
     ports:
@@ -23,13 +24,13 @@ services:
 
   openldap:
     image: osixia/openldap:develop-dev
+    container_name: ${OPENLDAP_NAME}
 #    domainname: "opendx.org"
 #    hostname: "ldap-server"
     ports:
       - "389:389"
-      - "636:636"
     expose:
-      - "636"
+      - "389"
     volumes:
       - ./data/certificates:/container/service/slapd/assets/certs
       - ./data/slapd/database:/var/lib/ldap
@@ -54,13 +55,17 @@ services:
 
   3dslicer-hub:
     image: opendx/tslicerh
+    container_name: ${TDSLICERHUB_NAME}
     build:
       context: .
     expose:
       - "80"
     volumes:
-      - ./tsliceh:/app/tsliceh:ro
+      - ./tsliceh:/app/tsliceh
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./proxy/nginx.conf:/app/proxy/nginx.conf
+    environment:
+      - PYTHONUNBUFFERED=1
 
 #  slicer_1:
 #    image: stevepieper/slicer-chronicle:4.10.2

@@ -15,8 +15,11 @@ def get_container_ip(name_id, network_id):
 def get_container_port(name_id):
     dc = docker.from_env()
     c = dc.containers.get(name_id)
-    tmp = list(c.ports.keys())[-1]
-    port = tmp.split('/')[0]
+    tmp = list(c.ports.keys())
+    if len(tmp)>0:
+        port = tmp[-1].split('/')[0]
+    else:
+        port = ""
     return port
 
 

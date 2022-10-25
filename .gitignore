@@ -9,3 +9,5 @@ tsliceh/templates/index.html
 
 data/
 restar4testing.sh
+
+.devcontainer/

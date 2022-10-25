@@ -42,4 +42,7 @@ CMD ["supervisord", "-c", "/etc/supervisord.conf"]
 
 EXPOSE 80
 
+COPY tsliceh.env /app/.env
+COPY users /app/user
+COPY proxy /app/proxy
 COPY tsliceh /app/tsliceh

@@ -159,6 +159,10 @@ def create_docker_network(network_name):
     dc = docker.from_env()
     # print("networks inside container " + dc.networks.list(names = network_name))
     networks_list = dc.networks.list(names=network_name)
+    for n in networks_list:
+        print(f"NETWORK {n.id}:{n.name}:")
+        for c in n.containers:
+            print(f"......{c.name}")
     if len(networks_list) > 0:
         if len(networks_list) > 1:
             for network in networks_list:
@@ -173,3 +177,93 @@ def create_docker_network(network_name):
         return network.id
     else:
         raise APIError(500, details=f"There is more than one {network_name} network active")
+
+
+def pull_tdslicer_image(image_name,image_tag):
+    dc = docker.from_env()
+    image = f"{image_name}:{image_tag}"
+    images = dc.images.list()
+    for image in images:
+        if image in image.tags:
+            print(f"image {image} already in the system")
+            return None
+    try:
+        dc.images.pull(image_name, tag=image_tag)
+    except docker.errors.APIError as e:
+        raise Exception(e)
+
+
+def refresh_nginx(sess, nginx_cfg_path, nginx_cont_name):
+    def generate_nginx_conf():
+        """ For each session, generate a section, plus the first part """
+        # TODO "nginx.conf" prefix
+        from tsliceh.main import tdslicerhub_adress
+        _ = f"""
+user www-data;
+
+events {{
+}}
+
+http {{
+  server {{
+    listen     80;
+    server_name  localhost;
+
+    location / {{
+    proxy_pass http://{tdslicerhub_adress}/;
+    }}
+
+    """
+        if sess:
+            for s in sess.query(Session3DSlicer).all():
+                # TODO Section doing reverse proxy magic
+                _ += f"""
+
+    location /x11/{s.uuid}/ {{
+          proxy_pass http://{s.service_address}/x11/;
+        }}
+    
+    location /x11/{s.uuid}/websockify {{
+      proxy_pass http://{s.service_address}/x11/websockify;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "Upgrade";
+      proxy_set_header Host $host;
+    }}        
+    """
+        _ += """
+    }
+}
+        """
+        print("::::::::::::::::::::::::::::CREATING NEW NGINX FILE:::::::::::::::::::::::::::::::::::::::::")
+        print(_)
+        if nginx_cfg_path:
+            with open(nginx_cfg_path, "wt") as f:
+                f.write(_)
+
+    def command_nginx_to_read_configuration():
+        """
+        Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
+        command it to reread the configuration.
+        """
+        tries = 0
+        while tries < 6:
+            from tsliceh.main import nginx_container_name
+            status = containers_status(nginx_container_name)
+            if status == "running":
+                dc = docker.from_env()
+                nginx = dc.containers.get(nginx_container_name)
+                print(
+                    "::::::::::::::::::::::::::::::::::::::RELOADING NGINX FILE::::::::::::::::::::::::::::::::::::::::::")
+                r = nginx.exec_run("/etc/init.d/nginx reload")
+                # TODO check output
+                return r
+            else:
+                docker_compose_up()
+                tries = +1
+        raise Exception(500, "Error when reloading nginx.conf")
+
+    # -----------------------------------------------
+
+    generate_nginx_conf()
+    command_nginx_to_read_configuration()
