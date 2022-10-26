@@ -27,7 +27,7 @@ import python_on_whales as docker_ow
 import ldap3
 from ldap3.core.exceptions import LDAPException
 from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, create_docker_network, \
-    docker_compose_up, refresh_nginx, pull_tdslicer_image
+    docker_compose_up, refresh_nginx, pull_tdslicer_image, get_ldap_adress, get_domain_name
 from tsliceh.helpers import get_container_ip, get_container_internal_adress, containers_status, \
     containers_cpu_percent_dict, \
     container_stats, calculate_cpu_percent
@@ -51,12 +51,13 @@ nginx_container_name = os.getenv(
 nginx_config_path = os.getenv(
     'NGINX_CONFIG_FILE')  # TODO Read from environment the location of nginx.conf relative to this container
 index_path = os.getenv('INDEX_PATH')
-allowed_inactivity_time_in_seconds = 600  # TODO Read from environment
+allowed_inactivity_time_in_seconds = 120  # TODO Read from environment
 network_name = os.getenv('NETWORK_NAME')
+domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'))
 # docker_compose_up()
 network_id = create_docker_network(network_name)
 tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id)
-ldap_adress = get_container_ip(os.getenv("OPENLDAP_NAME"), network_id) + ":389"
+ldap_adress = get_ldap_adress(os.getenv("MODE"),os.getenv("OPENLDAP_NAME"), network_id)
 tdslicer_image_tag = "4.10.2"
 tdslicer_image_name = "stevepieper/slicer-chronicle"
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
@@ -119,6 +120,8 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 s.url_path = f"/x11/{s.uuid}/vnc.html?resize=remote&path=x11/{s.uuid}/websockify/"
                 # Launch new container
                 launch_3dslicer_web_docker_container(s)
+                pct = docker_container_pct_activity(s.container_name)
+                s.info = {'CPU_pct': f'{pct}'}
                 # Commit new
                 session.add(s)
                 session.commit()
@@ -126,7 +129,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 refresh_html(session)
                 refresh_nginx(session, nginx_config_path, nginx_container_name)
                 sleep(3)
-            return RedirectResponse(url=f"http://localhost{s.url_path}", status_code=302)  # TODO URL ??
+            return RedirectResponse(url=f"http://{domain}{s.url_path}", status_code=302)  # TODO URL ??
         else:
             raise Exception(f"User {username} not authorized to open a 3DSlicer session")
 
@@ -144,11 +147,19 @@ def refresh_html(sess):
         # TODO Section doing reverse proxy magic
         _ += f"""
 
-<a href=http://localhost{s.url_path}>{s.user}</a><br>
+<a href=http://{domain}{s.url_path}>{s.user}</a><br>
+<a> {s.info} % </a><br>
+<a> Last Activity: {s.last_activity}</a><br>
+    """
+    _ += f"""
+<a href="http://{domain}/login">
+   <button>log in</button>
+</a>
     """
     if index_path:
         with open(index_path, "wt") as f:
             f.write(_)
+
 
 
 def launch_3dslicer_web_docker_container(s: Session3DSlicer):
@@ -239,8 +250,11 @@ class BackgroundRunner:
         self.session_maker = None
 
     async def check_session_activity(self, s: Session3DSlicer, db_sess):
+        print(":::::::::::::::::::::::Checking Session Activity:::::::::::::::::::::::::::::::::::")
         container = s.container_name
         pct = docker_container_pct_activity(s.container_name)
+        print(f"pct container: {s.container_name}: {pct} ")
+        s.info = {'CPU_pct': f'{pct}'}
         ahora = datetime.datetime.now()
         if pct > 10:
             s.last_activity = ahora
@@ -250,17 +264,21 @@ class BackgroundRunner:
         return stop
 
     async def sessions_checker(self, sm):
+        print(":::::::::::::::::::::::Session Checker:::::::::::::::::::::::::::::::::::")
         self.session_maker = sm
         # Start 3D Slicer sessions if we are back from a restart of the container
         sess = self.session_maker()
         for s in sess.query(Session3DSlicer).all():
             pct = docker_container_pct_activity(s.container_name)
             print(f"pct container: {s.container_name}: {pct} ")
+            s.info = {'CPU_pct':f'{pct}'}
+            sess.add(s)
             if pct < 0:
                 if s.restart:
                     launch_3dslicer_web_docker_container(s)
                 else:
                     sess.delete(s)
+
         sess.commit()
         # Update nginx.conf and reread Nginx configuration
         refresh_nginx(sess, nginx_config_path, nginx_container_name)
@@ -271,6 +289,7 @@ class BackgroundRunner:
             # Loop all containers
             for s in sess.query(Session3DSlicer).all():
                 stop = await self.check_session_activity(s, sess)
+                sess.add(s)
                 if stop:
                     stop_docker_container(s.container_name)
                     sess.delete(s)

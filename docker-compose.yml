@@ -64,6 +64,7 @@ services:
       - ./tsliceh:/app/tsliceh
       - /var/run/docker.sock:/var/run/docker.sock
       - ./proxy/nginx.conf:/app/proxy/nginx.conf
+      - ./tsliceh.env:/app/.env
     environment:
       - PYTHONUNBUFFERED=1
 

@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from ldap3 import Server, Connection, ALL, SUBTREE
 from ldap3.core.exceptions import LDAPException, LDAPBindError
 
-from tsliceh.helpers import containers_status
+from tsliceh.helpers import containers_status, get_container_ip
 
 
 class GUID(TypeDecorator):
@@ -88,6 +88,20 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
     if False in table_existence:
         declarative_base_.metadata.bind = engine_
         declarative_base_.metadata.create_all()
+
+
+def get_ldap_adress(mode, openldap_name, net_id):
+    if mode == "container":
+        ldap_adress = get_container_ip(openldap_name, net_id) + ":389"
+    else:
+        ldap_adress = "localhost:389"
+    return ldap_adress
+
+
+def get_domain_name(mode, domain_name):
+    if mode == "local":
+        domain_name = domain_name + ":8000"
+    return domain_name
 
 
 # def connect_ldap_server(ldap_adress):
@@ -179,7 +193,7 @@ def create_docker_network(network_name):
         raise APIError(500, details=f"There is more than one {network_name} network active")
 
 
-def pull_tdslicer_image(image_name,image_tag):
+def pull_tdslicer_image(image_name, image_tag):
     dc = docker.from_env()
     image = f"{image_name}:{image_tag}"
     images = dc.images.list()
@@ -198,6 +212,7 @@ def refresh_nginx(sess, nginx_cfg_path, nginx_cont_name):
         """ For each session, generate a section, plus the first part """
         # TODO "nginx.conf" prefix
         from tsliceh.main import tdslicerhub_adress
+        from tsliceh.main import domain
         _ = f"""
 user www-data;
 
@@ -207,7 +222,7 @@ events {{
 http {{
   server {{
     listen     80;
-    server_name  localhost;
+    server_name  {domain};
 
     location / {{
     proxy_pass http://{tdslicerhub_adress}/;
