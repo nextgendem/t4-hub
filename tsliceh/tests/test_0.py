@@ -14,7 +14,6 @@ import asyncio
 from tsliceh.main import app, orm_session_maker, allowed_inactivity_time_in_seconds
 from tsliceh import create_tables, create_session_factory, create_local_orm, Session3DSlicer
 import pytest
-import pytest_asyncio
 
 data = {"username": "juan_ruiz", "password": "prueba"}
 

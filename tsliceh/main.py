@@ -117,7 +117,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 s.last_activity = datetime.datetime.now()
                 session.add(s)
                 session.flush()
-                s.url_path = f"/x11/{s.uuid}/vnc.html?resize=remote&path=x11/{s.uuid}/websockify/"
+                s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&path=x11/{s.uuid}/websockify/"
                 # Launch new container
                 launch_3dslicer_web_docker_container(s)
                 pct = docker_container_pct_activity(s.container_name)
@@ -161,7 +161,6 @@ def refresh_html(sess):
             f.write(_)
 
 
-
 def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     """
     Launch a 3DSlicer web container
@@ -192,7 +191,8 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     # todo error control
     s.service_address = get_container_internal_adress(c.id, network_id)
     s.container_name = container_name
-    print(f"::::::::::::::::::::::::::container {c.name} : {c.status} in {s.service_address}::::::::::::::::::::::::::::::::::::")
+    print(
+        f"::::::::::::::::::::::::::container {c.name} : {c.status} in {s.service_address}::::::::::::::::::::::::::::::::::::")
 
 
 def stop_docker_container(name):
