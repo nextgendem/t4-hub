@@ -71,7 +71,7 @@ class Session3DSlicer(SQLAlchemyBase):
 
 def create_local_orm(conn_str):
     from sqlalchemy import create_engine
-    return create_engine(conn_str, echo=True)
+    return create_engine(conn_str, echo=True, connect_args={"check_same_thread": False})
 
 
 def create_session_factory(engine_):
@@ -195,10 +195,10 @@ def create_docker_network(network_name):
 
 def pull_tdslicer_image(image_name, image_tag):
     dc = docker.from_env()
-    image = f"{image_name}:{image_tag}"
+    image_full_name = f"{image_name}:{image_tag}"
     images = dc.images.list()
     for image in images:
-        if image in image.tags:
+        if image_full_name in image.tags:
             print(f"image {image} already in the system")
             return None
     try:

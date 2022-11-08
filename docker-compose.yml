@@ -67,6 +67,8 @@ services:
       - ./tsliceh.env:/app/.env
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE 1 # Prevents Python from writing pyc files to disc (equivalent to
+
 
 #  slicer_1:
 #    image: stevepieper/slicer-chronicle:4.10.2

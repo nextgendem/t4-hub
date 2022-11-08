@@ -6,19 +6,25 @@ import docker
 def get_container_ip(name_id, network_id):
     # TODO get ip without network info possible..
     dc = docker.from_env()
-    c = dc.containers.get(name_id)
-    network = dc.networks.get(network_id)
-    ip = c.attrs['NetworkSettings']['Networks'][network.name]['IPAddress']
+    try:
+        c = dc.containers.get(name_id)
+        network = dc.networks.get(network_id)
+        ip = c.attrs['NetworkSettings']['Networks'][network.name]['IPAddress']
+    except:
+        ip = ""
     return ip
 
 
 def get_container_port(name_id):
     dc = docker.from_env()
-    c = dc.containers.get(name_id)
-    tmp = list(c.ports.keys())
-    if len(tmp)>0:
-        port = tmp[-1].split('/')[0]
-    else:
+    try:
+        c = dc.containers.get(name_id)
+        tmp = list(c.ports.keys())
+        if len(tmp)>0:
+            port = tmp[-1].split('/')[0]
+        else:
+            port = ""
+    except:
         port = ""
     return port
 

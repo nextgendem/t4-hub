@@ -57,8 +57,8 @@ domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'))
 # docker_compose_up()
 network_id = create_docker_network(network_name)
 tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id)
-ldap_adress = get_ldap_adress(os.getenv("MODE"),os.getenv("OPENLDAP_NAME"), network_id)
-tdslicer_image_tag = "4.10.2"
+ldap_adress = get_ldap_adress(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
+tdslicer_image_tag = "5.0.3"
 tdslicer_image_name = "stevepieper/slicer-chronicle"
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 refresh_nginx(None, nginx_config_path, nginx_container_name)
@@ -192,7 +192,7 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     # todo error control
     s.service_address = get_container_internal_adress(c.id, network_id)
     s.container_name = container_name
-    print(f"::::::::::::::::::::::::::container{c.name} : {c.status} in {s.service_address}::::::::::::::::::::::::::::::::::::")
+    print(f"::::::::::::::::::::::::::container {c.name} : {c.status} in {s.service_address}::::::::::::::::::::::::::::::::::::")
 
 
 def stop_docker_container(name):
@@ -206,25 +206,28 @@ def stop_docker_container(name):
     """
     # TODO MANAGE THOSE PRINTS
     dc = docker.from_env()
-    c = dc.containers.get(name)
-    can_remove = False
-    status = containers_status(c.id)
-    if status:
-        if status == "running":
-            try:
-                c.stop()
-                c.reload()
-                can_remove = True
-            except:
-                can_remove = False
-                print(f"can't stop container{name}")
-    if c.status == "exited" or can_remove:
-        c.remove()
-        status = containers_status(name)
-        if not status:
-            print(f"::::::::::::::::::::::::::::::container{name} : removed::::::::::::::::::::::::::::::::::")
-        else:
-            print(f":::::::::::::::::::::::::::::::::::::::can't remove {name}:::::::::::::::::::::::::::::::")
+    try:
+        c = dc.containers.get(name)
+        can_remove = False
+        status = containers_status(c.id)
+        if status:
+            if status == "running":
+                try:
+                    c.stop()
+                    c.reload()
+                    can_remove = True
+                except:
+                    can_remove = False
+                    print(f"can't stop container{name}")
+        if c.status == "exited" or can_remove:
+            c.remove()
+            status = containers_status(name)
+            if not status:
+                print(f"::::::::::::::::::::::::::::::container{name} : removed::::::::::::::::::::::::::::::::::")
+            else:
+                print(f":::::::::::::::::::::::::::::::::::::::can't remove {name}:::::::::::::::::::::::::::::::")
+    except:
+        print(f"::::::::::::::::::::::::::::::::::::::: {name} already removed:::::::::::::::::::::::::::::::")
 
 
 def docker_container_pct_activity(container_id_name):
@@ -271,7 +274,7 @@ class BackgroundRunner:
         for s in sess.query(Session3DSlicer).all():
             pct = docker_container_pct_activity(s.container_name)
             print(f"pct container: {s.container_name}: {pct} ")
-            s.info = {'CPU_pct':f'{pct}'}
+            s.info = {'CPU_pct': f'{pct}'}
             sess.add(s)
             if pct < 0:
                 if s.restart:
