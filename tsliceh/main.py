@@ -42,7 +42,7 @@ app.add_middleware(
     allow_headers=['*'],
 )
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=os.getenv("STATIC_FOLDER")), name="static")
 engine = create_local_orm("sqlite:////tmp/3h_sessions.sqlite")
 create_tables(engine)
 orm_session_maker = create_session_factory(engine)
