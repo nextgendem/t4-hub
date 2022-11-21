@@ -22,6 +22,7 @@ from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from starlette.responses import RedirectResponse
 import python_on_whales as docker_ow
 import ldap3
@@ -41,6 +42,7 @@ app.add_middleware(
     allow_headers=['*'],
 )
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+app.mount("/static", StaticFiles(directory="static"), name="static")
 engine = create_local_orm("sqlite:////tmp/3h_sessions.sqlite")
 create_tables(engine)
 orm_session_maker = create_session_factory(engine)
@@ -140,21 +142,45 @@ def refresh_html(sess):
 <html>
 <head>
 <title>3DSlicer Sessions:</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+<link rel="stylesheet" href="https://www.w3schools.com/lib/w3-theme-black.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 </head>
+<body id="myPage">
+<!-- Image Header -->
+<div class="w3-display-container w3-animate-opacity">
+  <img src="/static/images/logo_y_titulo_fondo_naranja.png" alt="logo_opendx28" style="width:100%;min-height:350px;max-height:600px;">
+<!--  <div class="w3-container w3-display-bottomleft w3-margin-bottom">
+    <button onclick="document.getElementById('id01').style.display='block'" class="w3-button w3-xlarge w3-theme w3-hover-teal" title="Go To W3.CSS">LEARN W3.CSS</button>
+  </div>-->
+</div>
 
     """
     for s in sess.query(Session3DSlicer).all():
         # TODO Section doing reverse proxy magic
         _ += f"""
-
-<a href=http://{domain}{s.url_path}>{s.user}</a><br>
-<a> {s.info} % </a><br>
-<a> Last Activity: {s.last_activity}</a><br>
+<div class="w3-quarter">
+<a href=http://{domain}{s.url_path} target="_blank" rel="noopener noreferrer">
+    <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:45%" class="w3-circle w3-hover-opacity">
+</a>
+<h3>{s.user}</h3>
+<p> {s.info} % </p>
+<p> Last Activity: {s.last_activity}</p>
+</div>
     """
     _ += f"""
-<a href="http://{domain}/login">
-   <button>log in</button>
-</a>
+<div class="w3-quarter">
+<a href="http://{domain}/login" target="_blank" rel="noopener noreferrer">
+    <img src="../static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:45%" class="w3-circle w3-hover-opacity">
+</a>    
+   <h3>
+   <a href="http://{domain}/login" target="_blank" rel="noopener noreferrer">New Session</a>
+   </h3>
+</div>
+
+</body>
     """
     if index_path:
         with open(index_path, "wt") as f:
