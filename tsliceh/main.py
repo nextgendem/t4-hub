@@ -43,13 +43,12 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+load_dotenv()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 app.mount("/static", StaticFiles(directory=os.getenv("STATIC_FOLDER")), name="static")
 engine = create_local_orm("sqlite:////tmp/3h_sessions.sqlite")
 create_tables(engine)
 orm_session_maker = create_session_factory(engine)
-
-load_dotenv()
 nginx_container_name = os.getenv(
     'NGINX_NAME')  # TODO Read from environment variable the name of nginx container relative to this container
 nginx_config_path = os.getenv(
