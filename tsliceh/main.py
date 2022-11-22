@@ -29,9 +29,11 @@ import ldap3
 from ldap3.core.exceptions import LDAPException
 from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, create_docker_network, \
     docker_compose_up, refresh_nginx, pull_tdslicer_image, get_ldap_adress, get_domain_name
+from tsliceh.Volumes import create_all_volumes, volume_dict
 from tsliceh.helpers import get_container_ip, get_container_internal_adress, containers_status, \
     containers_cpu_percent_dict, \
     container_stats, calculate_cpu_percent
+import logging
 
 app = FastAPI(root_path="")
 app.add_middleware(
@@ -53,7 +55,7 @@ nginx_container_name = os.getenv(
 nginx_config_path = os.getenv(
     'NGINX_CONFIG_FILE')  # TODO Read from environment the location of nginx.conf relative to this container
 index_path = os.getenv('INDEX_PATH')
-allowed_inactivity_time_in_seconds = 120  # TODO Read from environment
+allowed_inactivity_time_in_seconds = 300  # TODO Read from environment
 network_name = os.getenv('NETWORK_NAME')
 domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'))
 # docker_compose_up()
@@ -198,9 +200,13 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     container_name = s.user
     print("::::::::::::::::::::::::CREATING NEW CONTAINER:::::::::::::::::::::::::::::::::")
     pull_tdslicer_image(tdslicer_image_name, tdslicer_image_tag)
+    create_all_volumes(s.user)
+    vol_dict = volume_dict(s.user)
     c = dc.containers.run(image=f"{tdslicer_image_name}:{tdslicer_image_tag}", ports={"8080/tcp": None},
                           name=container_name,
-                          network=network_id, detach=True)
+                          network=network_id,
+                          volumes=vol_dict,
+                          detach=True)
     container_id = c.id
     # wait until active:
     # active or not..

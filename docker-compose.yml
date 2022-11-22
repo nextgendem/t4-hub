@@ -65,16 +65,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./proxy/nginx.conf:/app/proxy/nginx.conf
       - ./tsliceh.env:/app/.env
+      - 3dslicer-hub-volume:/srv
     environment:
       - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE 1 # Prevents Python from writing pyc files to disc (equivalent to
+      - PYTHONDONTWRITEBYTECODE=1 # Prevents Python from writing pyc files to disc (equivalent to
 
-
-#  slicer_1:
-#    image: stevepieper/slicer-chronicle:4.10.2
-#    volumes:
-#      - slicer-storage_1:/var/cache/apt
-#    ports:
-#      - "8080:8080"
-#    expose:
-#      - "8080"
+volumes:
+  3dslicer-hub-volume:

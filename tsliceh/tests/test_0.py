@@ -15,7 +15,7 @@ from tsliceh.main import app, orm_session_maker, allowed_inactivity_time_in_seco
 from tsliceh import create_tables, create_session_factory, create_local_orm, Session3DSlicer
 import pytest
 
-data = {"username": "juan_ruiz", "password": "prueba"}
+data = {"username": "test1", "password": "prueba"}
 
 
 def remove_container():

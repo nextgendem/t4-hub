@@ -18,6 +18,7 @@ RUN apt-get update && \
     libxslt-dev \
     zlib1g-dev \
     unzip \
+    python-pytest \
     && apt-get clean
 
 # COMMON
