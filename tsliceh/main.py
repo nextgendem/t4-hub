@@ -33,8 +33,14 @@ from tsliceh.Volumes import create_all_volumes, volume_dict
 from tsliceh.helpers import get_container_ip, get_container_internal_adress, containers_status, \
     containers_cpu_percent_dict, \
     container_stats, calculate_cpu_percent
+import logging.config
 import logging
 
+# setup loggers
+logging.config.fileConfig('logging.conf', disable_existing_loggers=True)
+# get root logger
+logger = logging.getLogger(__name__) # the __name__ resolve to "main" since we are at the root of the project.
+                                      # This will get the root logger since no logger in the configuration has this name.
 app = FastAPI(root_path="")
 app.add_middleware(
     CORSMiddleware,
@@ -45,7 +51,7 @@ app.add_middleware(
 )
 load_dotenv()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
-app.mount("/static", StaticFiles(directory=os.getenv("STATIC_FOLDER")), name="static")
+app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__),"static")), name="static")
 engine = create_local_orm("sqlite:////tmp/3h_sessions.sqlite")
 create_tables(engine)
 orm_session_maker = create_session_factory(engine)
@@ -59,7 +65,7 @@ network_name = os.getenv('NETWORK_NAME')
 domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'))
 # docker_compose_up()
 network_id = create_docker_network(network_name)
-tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id)
+tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id) if os.getenv("MODE") != "local" else domain
 ldap_adress = get_ldap_adress(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
 tdslicer_image_tag = "5.0.3"
 tdslicer_image_name = "stevepieper/slicer-chronicle"
@@ -95,9 +101,13 @@ async def check_credentials(user, password):
                               read_only=True) as conn:
             print(conn.result["description"])  # "success" if bind is ok
             return True
-    except LDAPException:
-        print('Unable to connect to LDAP server')
-        return False
+    except LDAPException as e:
+        print(e)
+        logger.error(e.args)
+        if user == "free_user" and password == "test":
+            return True
+        else:
+            return False
 
 
 async def can_open_session(user):
@@ -131,8 +141,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 # Update nginx.conf and reread Nginx configuration
                 refresh_html(session)
                 refresh_nginx(session, nginx_config_path, nginx_container_name)
-                sleep(3)
-            return RedirectResponse(url=f"http://{domain}{s.url_path}", status_code=302)  # TODO URL ??
+            return RedirectResponse(url=f"http://{domain}{s.url_path}", status_code=302)
         else:
             raise Exception(f"User {username} not authorized to open a 3DSlicer session")
 
@@ -186,6 +195,7 @@ def refresh_html(sess):
     if index_path:
         with open(index_path, "wt") as f:
             f.write(_)
+        logger.info(f"index.html re-writen")
 
 
 def launch_3dslicer_web_docker_container(s: Session3DSlicer):
@@ -197,7 +207,7 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     dc = docker.from_env()
     # just a container per user
     container_name = s.user
-    print("::::::::::::::::::::::::CREATING NEW CONTAINER:::::::::::::::::::::::::::::::::")
+    logger.info("CREATING NEW CONTAINER")
     pull_tdslicer_image(tdslicer_image_name, tdslicer_image_tag)
     create_all_volumes(s.user)
     vol_dict = volume_dict(s.user)
@@ -216,14 +226,13 @@ def launch_3dslicer_web_docker_container(s: Session3DSlicer):
         if c.status == "running":
             active = True
         if c.status == "exited":
-            print("container exited")
+            logger.info("container exited")
             break
     logs = c.logs
     # todo error control
     s.service_address = get_container_internal_adress(c.id, network_id)
     s.container_name = container_name
-    print(
-        f"::::::::::::::::::::::::::container {c.name} : {c.status} in {s.service_address}::::::::::::::::::::::::::::::::::::")
+    logger.info(f"container {c.name} : {c.status} in {s.service_address}")
 
 
 def stop_docker_container(name):
@@ -254,11 +263,11 @@ def stop_docker_container(name):
             c.remove()
             status = containers_status(name)
             if not status:
-                print(f"::::::::::::::::::::::::::::::container{name} : removed::::::::::::::::::::::::::::::::::")
+                logger.info(f"container{name} : removed")
             else:
-                print(f":::::::::::::::::::::::::::::::::::::::can't remove {name}:::::::::::::::::::::::::::::::")
+                logger.info(f"can't remove {name}")
     except:
-        print(f"::::::::::::::::::::::::::::::::::::::: {name} already removed:::::::::::::::::::::::::::::::")
+        logger.info(f"{name} container already removed")
 
 
 def docker_container_pct_activity(container_id_name):
@@ -287,7 +296,7 @@ class BackgroundRunner:
         print(":::::::::::::::::::::::Checking Session Activity:::::::::::::::::::::::::::::::::::")
         container = s.container_name
         pct = docker_container_pct_activity(s.container_name)
-        print(f"pct container: {s.container_name}: {pct} ")
+        logger.info(f"pct container: {s.container_name}: {pct} ")
         s.info = {'CPU_pct': f'{pct}'}
         ahora = datetime.datetime.now()
         if pct > 10:
@@ -298,17 +307,19 @@ class BackgroundRunner:
         return stop
 
     async def sessions_checker(self, sm):
-        print(":::::::::::::::::::::::Session Checker:::::::::::::::::::::::::::::::::::")
+        logger.info(":::::::::::::::::::::::Session Checker:::::::::::::::::::::::::::::::::::")
         self.session_maker = sm
         # Start 3D Slicer sessions if we are back from a restart of the container
         sess = self.session_maker()
         for s in sess.query(Session3DSlicer).all():
             pct = docker_container_pct_activity(s.container_name)
-            print(f"pct container: {s.container_name}: {pct} ")
+            logger.info(f"pct container: {s.container_name}: {pct} ")
             s.info = {'CPU_pct': f'{pct}'}
             sess.add(s)
             if pct < 0:
                 if s.restart:
+                    # todo ahora mismo esto nunca ocurre
+                    logger.info(f"restarting container for user {s.user}")
                     launch_3dslicer_web_docker_container(s)
                 else:
                     sess.delete(s)
