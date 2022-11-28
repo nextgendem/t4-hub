@@ -1,9 +1,11 @@
 import docker
 import docker.errors
 
-vol_dict = {"workspace": "/var/cache/apt",
-            "tmpfiles": "/tmp",
-            "logs": "/var/log"}
+vol_dict = {"cache_apt": "/var/cache/apt", # este tieme que ser borrado periodicamente? realmente lo necesito??
+            # "tmpfiles": "/tmp", # todo parece que da problemas cuando le pongo ese volumen... quizás podría hacer que se destruya siembre
+            "logs": "/var/log",
+            "Documents" : "/home/researcher/Documents"}
+            # "/home/paula/Documentos/opendx28/3dslicerhub/researcher": "/home/resercher"}
 
 def create_volume(name, type):
     """
@@ -46,4 +48,5 @@ def volume_dict(user):
     for k, v in vol_dict.items():
         # {"pmoreno_workspace": {"bind":"/var/cache/apt", "mode":"ro"}}
         d.update({f"{user}_{k}": {"bind": v, "mode": "rw"}}) # modes??
+#    d.update({"/home/paula/Documentos/opendx28/3dslicerhub/researcher": {"bind": "/home/"}})
     return d
