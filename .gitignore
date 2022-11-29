@@ -13,3 +13,5 @@ restar4testing.sh
 .devcontainer/
 
 tsliceh/logs
+
+*.log

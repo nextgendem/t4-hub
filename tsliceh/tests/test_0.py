@@ -7,6 +7,9 @@ from datetime import time
 # from tsliceh.main import app, orm_session_maker
 import docker
 import time
+
+from dotenv import load_dotenv
+
 from tsliceh.main import BackgroundRunner, orm_session_maker
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -14,9 +17,12 @@ import asyncio
 from tsliceh.main import app, orm_session_maker, allowed_inactivity_time_in_seconds
 from tsliceh import create_tables, create_session_factory, create_local_orm, Session3DSlicer
 import pytest
+import os
+import logging
+data = {"username": "free_user", "password": "test"}
 
-data = {"username": "test1", "password": "prueba"}
 
+logger = logging.getLogger(__name__)
 
 def remove_container():
     dc = docker.from_env()
@@ -27,8 +33,12 @@ def remove_container():
         finally:
             c.remove()
     except Exception as e:
-        print(e.message, e.args)
+        logger.info(e.args)
 
+def compare_time_min(file):
+    file_mod_time = time.gmtime(os.path.getmtime(file))
+    now = time.gmtime(time.time())
+    return (file_mod_time.tm_mday, file_mod_time.tm_hour,file_mod_time.tm_min == now.tm_mday, now.tm_hour, now.tm_min)
 
 @pytest.fixture(autouse="module")
 def clean_user_container():
@@ -40,7 +50,7 @@ def clean_user_container():
             session.delete(s)
             session.commit()
         except Exception as e:
-            print(e.message, e.args)
+            logger.info(e.args)
         finally:
             remove_container()
 
@@ -76,29 +86,46 @@ def test_launch_container(client):
 
 
 def test_delete_container_and_session(client):
+    # login user
+    load_dotenv()
+    tic = time.perf_counter()
     response = client.post("/login", data)
     assert response.status_code == 302
+    toc = time.perf_counter()
+    logger.info(f"log new user in {toc - tic:0.4f} seconds")
+    # is the container alive?
     dc = docker.from_env()
     try:
         status = dc.containers.get(data["username"]).status
         assert status == "running"
     except AssertionError as error:
-        print(error)
+        logger.info(error)
+    # will delete the container ahter innactivity? (time of inactivity + maximun witing time of check_session routine
     waiting = (allowed_inactivity_time_in_seconds + 60)
-    print(f"waiting for {waiting} s")
+    logger.info(f"waiting for {waiting} s")
     # Todo not sure about using time.sleep or asyncio.sleep
     time.sleep(waiting)
+    # any container?
     try:
         c = dc.containers.get(data["username"])
     except:
         c = None
     assert c is None
+    #  adding maximun witing time of check_session routine
     waiting = waiting + 60
-    print(f"waiting for {waiting} s")
+    logger.info(f"waiting for {waiting} s")
+    tic = time.perf_counter()
     time.sleep(waiting)
+    # any 3DslicerSession?
     session = orm_session_maker()
     s = session.query(Session3DSlicer).filter(Session3DSlicer.user == data["username"]).first()
     assert s is None
+    index_file = os.getenv("INDEX_PATH")
+    nginx_conf_file = os.getenv("NGINX_CONFIG_FILE")
+    assert compare_time_min(index_file)
+    assert compare_time_min(nginx_conf_file)
+    logger.info(f"index file rewriten at {time.ctime(os.path.getmtime(index_file))} current time is {time.ctime(time.time())} ")
+    logger.info(f"index file rewriten at {time.ctime(os.path.getmtime(nginx_conf_file))} current time is {time.ctime(time.time())}")
 
 
 def test_restart_session():
