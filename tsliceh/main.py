@@ -34,13 +34,18 @@ from tsliceh.helpers import get_container_ip, get_container_internal_adress, con
     containers_cpu_percent_dict, \
     container_stats, calculate_cpu_percent
 import logging.config
+from fastapi.logger import logger
 import logging
 
-# setup loggers
-logging.config.fileConfig('logging.conf', disable_existing_loggers=True)
-# get root logger
-logger = logging.getLogger(__name__) # the __name__ resolve to "main" since we are at the root of the project.
-                                      # This will get the root logger since no logger in the configuration has this name.
+# setup loggers https://github.com/tiangolo/uvicorn-gunicorn-fastapi-docker/issues/19#issuecomment-606672830
+logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"), disable_existing_loggers=False)
+gunicorn_logger = logging.getLogger('gunicorn.error')
+logger.handlers = gunicorn_logger.handlers
+if __name__ != "main":
+    logger.setLevel(gunicorn_logger.level)
+else:
+    logger.setLevel(logging.DEBUG)
+
 app = FastAPI(root_path="")
 app.add_middleware(
     CORSMiddleware,
@@ -65,7 +70,8 @@ network_name = os.getenv('NETWORK_NAME')
 domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'))
 # docker_compose_up()
 network_id = create_docker_network(network_name)
-tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id) if os.getenv("MODE") != "local" else domain
+tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id) if os.getenv(
+    "MODE") != "local" else domain
 ldap_adress = get_ldap_adress(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
 tdslicer_image_tag = "5.0.3"
 tdslicer_image_name = "stevepieper/slicer-chronicle"
@@ -142,8 +148,17 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 refresh_html(session)
                 refresh_nginx(session, nginx_config_path, nginx_container_name)
             return RedirectResponse(url=f"http://{domain}{s.url_path}", status_code=302)
-        else:
-            raise Exception(f"User {username} not authorized to open a 3DSlicer session")
+    else:
+        return HTMLResponse(content="""<!DOCTYPE html>
+                                        <html>
+                                          <head>
+                                            <title>Login Failed</title>
+                                          </head>
+                                          <body>
+                                          <p>Login Failed: Your user ID or password is incorrect</p>
+                                          </body>
+                                        </html>""", status_code=401)
+
 
 
 def refresh_html(sess):
@@ -375,4 +390,4 @@ async def startup():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0")
+    uvicorn.run(app, host="0.0.0.0",debug = True)
