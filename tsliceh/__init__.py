@@ -257,7 +257,6 @@ http {{
                 f.write(_)
 
     def command_nginx_to_read_configuration():
-        from tsliceh.main import logger
         """
         Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
         command it to reread the configuration.
@@ -269,14 +268,14 @@ http {{
             if status == "running":
                 dc = docker.from_env()
                 nginx = dc.containers.get(nginx_container_name)
-                logger.info("RELOADING NGINX FILE")
+                # logger.info("RELOADING NGINX FILE")
                 try:
                     r = nginx.exec_run("/etc/init.d/nginx reload")
-                    logger.info(r.output)
+                    # logger.info(r.output)
                     return r
                 except docker.errors.APIError as e:
-                    logger.warning(e.response)
-                    logger.info("trying to reload nginx proxy")
+                    # logger.warning(e.response)
+                    # logger.info("trying to reload nginx proxy")
                     for tries in range(5):
                         docker_compose_up()
                     raise Exception(500, "Error when reloading nginx.conf")

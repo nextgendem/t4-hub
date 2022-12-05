@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from starlette.responses import RedirectResponse
+from starlette.responses import RedirectResponse, HTMLResponse
 import python_on_whales as docker_ow
 import ldap3
 from ldap3.core.exceptions import LDAPException
@@ -159,6 +159,27 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                                           </body>
                                         </html>""", status_code=401)
 
+
+@app.delete("/close_session/{session_id}")
+async def close_session_and_container(session_id):
+    session = orm_session_maker()
+    s = session.query(Session3DSlicer).filter(Session3DSlicer.uuid == session_id).first()
+    if s:
+        status = containers_status(s.user)
+        if status:
+            dc = docker.from_env()
+            container = dc.containers.get(s.user)
+            container.remove(force=True)
+            logger.info(f"container {s.user} deleted")
+        logger.info(f"deleting session {s.uuid}")
+        session.delete(s)
+        session.commit()
+        # Update nginx.conf and reread Nginx configuration
+        refresh_nginx(session, nginx_config_path, nginx_container_name)
+        refresh_html(session)
+        return RedirectResponse(url="/", status_code=200)
+    else:
+        raise Exception(f"cant remove container user expired")
 
 
 def refresh_html(sess):

@@ -22,6 +22,11 @@ services:
 #      - ./proxy/web/index.html:/usr/share/nginx/html/index.html
     command: [ nginx-debug, '-g', 'daemon off;' ]
 
+
+# Primera vez que se crea ejecutar en el container:
+#ldapadd -x -D cn=admin,dc=opendx,dc=org -W -f /home/users/ou.ldif
+#ldapadd -x -D cn=admin,dc=opendx,dc=org -W -f /home/users/usuarios.ldif
+
   openldap:
     image: osixia/openldap:develop-dev
     container_name: ${OPENLDAP_NAME}
