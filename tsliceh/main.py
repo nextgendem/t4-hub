@@ -29,7 +29,7 @@ import ldap3
 from ldap3.core.exceptions import LDAPException
 from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, create_docker_network, \
     docker_compose_up, refresh_nginx, pull_tdslicer_image, get_ldap_adress, get_domain_name
-from tsliceh.Volumes import create_all_volumes, volume_dict
+from tsliceh.volumes import create_all_volumes, volume_dict
 from tsliceh.helpers import get_container_ip, get_container_internal_adress, containers_status, \
     containers_cpu_percent_dict, \
     container_stats, calculate_cpu_percent
@@ -204,29 +204,29 @@ def refresh_html(sess):
 </div>
 
     """
+    _ += f"""
+    <div class="w3-quarter">
+    <a href="http://{domain}/login" target="_blank" rel="noopener noreferrer">
+        <img src="../static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:45%" class="w3-circle w3-hover-opacity">
+    </a>    
+       <h3>
+       <a href="http://{domain}/login" target="_blank" rel="noopener noreferrer">New Session</a>
+       </h3>
+    </div>
+
+    </body>
+        """
     for s in sess.query(Session3DSlicer).all():
         # TODO Section doing reverse proxy magic
         _ += f"""
 <div class="w3-quarter">
 <a href=http://{domain}{s.url_path} target="_blank" rel="noopener noreferrer">
-    <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:45%" class="w3-circle w3-hover-opacity">
+    <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:23%" class="w3-circle w3-hover-opacity">
 </a>
 <h3>{s.user}</h3>
-<p> {s.info} % </p>
-<p> Last Activity: {s.last_activity}</p>
+<p>CPU [%]: {s.info["CPU_pct"]}</p>
+<p>(last checked: {s.last_activity})</p>
 </div>
-    """
-    _ += f"""
-<div class="w3-quarter">
-<a href="http://{domain}/login" target="_blank" rel="noopener noreferrer">
-    <img src="../static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:45%" class="w3-circle w3-hover-opacity">
-</a>    
-   <h3>
-   <a href="http://{domain}/login" target="_blank" rel="noopener noreferrer">New Session</a>
-   </h3>
-</div>
-
-</body>
     """
     if index_path:
         with open(index_path, "wt") as f:

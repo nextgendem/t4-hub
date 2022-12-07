@@ -24,6 +24,7 @@ data = {"username": "free_user", "password": "test"}
 
 logger = logging.getLogger(__name__)
 
+
 def remove_container():
     dc = docker.from_env()
     try:
@@ -35,10 +36,12 @@ def remove_container():
     except Exception as e:
         logger.info(e.args)
 
+
 def compare_time_min(file):
     file_mod_time = time.gmtime(os.path.getmtime(file))
     now = time.gmtime(time.time())
     return (file_mod_time.tm_mday, file_mod_time.tm_hour,file_mod_time.tm_min == now.tm_mday, now.tm_hour, now.tm_min)
+
 
 @pytest.fixture(autouse="module")
 def clean_user_container():

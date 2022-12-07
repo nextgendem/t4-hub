@@ -20,7 +20,7 @@ def get_container_port(name_id):
     try:
         c = dc.containers.get(name_id)
         tmp = list(c.ports.keys())
-        if len(tmp)>0:
+        if len(tmp) > 0:
             port = tmp[-1].split('/')[0]
         else:
             port = ""
