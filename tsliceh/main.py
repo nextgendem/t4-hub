@@ -136,7 +136,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 s.last_activity = datetime.datetime.now()
                 session.add(s)
                 session.flush()
-                s.url_path = f"/x11/{s.uuid}/vnc.html?scale=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
+                s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
                 # Launch new container
                 launch_3dslicer_web_docker_container(s)
                 pct = docker_container_pct_activity(s.container_name)
