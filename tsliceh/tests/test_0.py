@@ -1,21 +1,15 @@
 import json
 from datetime import time
 
-# from fastapi.testclient import TestClient
-# from sqlalchemy import create_engine
-#
-# from tsliceh.main import app, orm_session_maker
 import docker
 import time
 
 from dotenv import load_dotenv
 
-from tsliceh.main import BackgroundRunner, orm_session_maker
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import asyncio
 from tsliceh.main import app, orm_session_maker, allowed_inactivity_time_in_seconds
-from tsliceh import create_tables, create_session_factory, create_local_orm, Session3DSlicer
+from tsliceh import Session3DSlicer
 import pytest
 import os
 import logging
