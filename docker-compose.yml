@@ -28,7 +28,7 @@ services:
 #ldapadd -x -D cn=admin,dc=opendx,dc=org -W -f /home/users/usuarios.ldif
 
   openldap:
-    image: osixia/openldap:develop-dev
+    image: osixia/openldap:stable
     container_name: ${OPENLDAP_NAME}
 #    domainname: "opendx.org"
 #    hostname: "ldap-server"
