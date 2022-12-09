@@ -354,12 +354,12 @@ def stop_remove_docker_container(name):
                     can_remove = True
                 except:
                     can_remove = False
-                    print(f"can't stop container{name}")
+                    print(f"can't stop container {name}")
         if c.status == "exited" or can_remove:
             c.remove()
             status = containers_status(name)
             if not status:
-                logger.info(f"container{name} : removed")
+                logger.info(f"container {name} : removed")
             else:
                 logger.info(f"can't remove {name}")
     except:
