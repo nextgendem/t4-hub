@@ -1,4 +1,5 @@
 import datetime
+import os
 import uuid
 
 import docker
@@ -7,9 +8,6 @@ from docker.errors import APIError
 from sqlalchemy import Column, JSON, Boolean, String, DateTime, TypeDecorator, CHAR
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
-
-from ldap3 import Server, Connection, ALL, SUBTREE
-from ldap3.core.exceptions import LDAPException, LDAPBindError
 
 from tsliceh.helpers import containers_status, get_container_ip
 
@@ -200,19 +198,17 @@ def pull_tdslicer_image(image_name, image_tag):
     for image in images:
         if image_full_name in image.tags:
             print(f"image {image} already in the system")
-            return None
+            return
     try:
         dc.images.pull(image_name, tag=image_tag)
     except docker.errors.APIError as e:
         raise Exception(e)
 
 
-def refresh_nginx(sess, nginx_cfg_path, nginx_cont_name):
+def refresh_nginx(sess, nginx_cfg_path, domainn, tds_address):
     def generate_nginx_conf():
         """ For each session, generate a section, plus the first part """
         # TODO "nginx.conf" prefix
-        from tsliceh.main import tdslicerhub_adress
-        from tsliceh.main import domain
         _ = f"""
 user www-data;
 
@@ -222,10 +218,10 @@ events {{
 http {{
   server {{
     listen     80;
-    server_name  {domain};
+    server_name  {domainn};
 
     location / {{
-    proxy_pass http://{tdslicerhub_adress}/;
+    proxy_pass http://{tds_address}/;
     }}
 
     """
@@ -261,9 +257,9 @@ http {{
         Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
         command it to reread the configuration.
         """
+        nginx_container_name = os.getenv("NGINX_NAME")  # TODO Pass (inject) as parameter
         tries = 0
         while tries < 6:
-            from tsliceh.main import nginx_container_name
             status = containers_status(nginx_container_name)
             if status == "running":
                 dc = docker.from_env()
