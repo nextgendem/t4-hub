@@ -65,6 +65,7 @@ create_tables(engine)
 orm_session_maker = create_session_factory(engine)
 
 CONTAINER_NAME_PREFIX = "h__tds__"
+ACTIVITY_THRESHOLD = 10
 nginx_container_name = os.getenv('NGINX_NAME')  # TODO Read from environment variable the name of nginx container relative to this container
 nginx_config_path = os.getenv('NGINX_CONFIG_FILE')  # TODO Read from environment the location of nginx.conf relative to this container
 index_path = os.getenv('INDEX_PATH')
@@ -378,7 +379,6 @@ def docker_container_pct_activity(container_id_name):
         c = dc.containers.get(container_id_name)
         stats = container_stats(c.id)
         return calculate_cpu_percent(stats)
-
     except:
         return -1
 
@@ -395,7 +395,7 @@ class BackgroundRunner:
             s.info['CPU_pct'] = pct
             flag_modified(s, "info")
             ahora = datetime.datetime.now()
-            if pct > 10:
+            if pct > ACTIVITY_THRESHOLD:
                 s.last_activity = ahora
                 stop = False
             else:
@@ -408,7 +408,6 @@ class BackgroundRunner:
         dc = docker.from_env()
         try:
             tdslicer_containers = [c.name for c in dc.containers.list(all)]
-            logger.info(f"::::::::::::::::: sessions_checker - tdslicer containers: {tdslicer_containers}")
         except Exception as e:
             logger.info(f"::::::::::::::::: sessions_checker - EXCEPTION no containers. {e}")
             return None
@@ -420,20 +419,28 @@ class BackgroundRunner:
             logger.info(f"pct container: {s.container_name}: {pct} ")
             s.last_activity = datetime.datetime.now()
             s.info['CPU_pct'] = pct
-            flag_modified(s, "info")
-            if pct < 0:
+            if pct < 0:  # <0 -> "Container does not exist"
                 if s.restart:
                     # TODO right now "restart" is always False so this is never executed
                     logger.info(f"::::::::::::::::: sessions_checker - restarting container for user {s.user}")
                     await launch_3dslicer_web_docker_container(s)
+                    s.info['CPU_pct'] = ACTIVITY_THRESHOLD + 1
                     sess.add(s)
                 else:
                     logger.info(f"::::::::::::::::: sessions_checker - deleting session {s.user} because associated container does not exist")
                     sess.delete(s)
             else:
-                logger.info(f"::::::::::::::::: sessions_checker - reassociating session {s.user} with container {s.container_name}")
-                tdslicer_containers.remove(s.container_name)
-                sess.add(s)
+                if s.restart:
+                    logger.info(f"::::::::::::::::: sessions_checker - reassociating session {s.user} with container {s.container_name}")
+                    s.info['CPU_pct'] = ACTIVITY_THRESHOLD + 1
+                    tdslicer_containers.remove(s.container_name)  # Do not delete this container
+                    sess.add(s)
+                else:
+                    logger.info(f"::::::::::::::::: sessions_checker - removing container and session for {s.user}, with container {s.container_name}")
+                    stop_remove_docker_container(s.container_name)
+                    tdslicer_containers.remove(s.container_name)
+                    sess.delete(s)
+            flag_modified(s, "info")
 
         sess.commit()
         sess.close()
@@ -443,7 +450,7 @@ class BackgroundRunner:
         # Remove dangling 3dslicer containers managed by 3dslicer-hub
         for name in tdslicer_containers:
             if name.startswith(CONTAINER_NAME_PREFIX):
-                logger.info(f"::::::::::::::::: sessions_checker - removing container {name}")
+                logger.info(f"::::::::::::::::: sessions_checker - removing container {name} with no associated session")
                 stop_remove_docker_container(name)
             await asyncio.sleep(200)
 
