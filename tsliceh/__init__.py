@@ -97,9 +97,17 @@ def get_ldap_adress(mode, openldap_name, net_id):
 
 
 def get_domain_name(mode, domain_name):
+    from dotenv import load_dotenv
     if mode == "local":
-        domain_name = domain_name + ":8000"
-    return domain_name
+        return domain_name + ":8000"
+    else:
+        externalIP  = os.popen('curl -s ifconfig.me').readline()
+        print(externalIP)
+        load_dotenv()
+        if externalIP == os.getenv("IP"):
+            return os.getenv("DOMAIN")
+        else:
+            return "localhost"
 
 
 # def connect_ldap_server(ldap_adress):

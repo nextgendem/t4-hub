@@ -225,12 +225,13 @@ async def close_session_and_container(session_id):
     session = orm_session_maker()
     s = session.query(Session3DSlicer).get(session_id)
     if s:
-        status = containers_status(s.user)
+        container_name = CONTAINER_NAME_PREFIX + s.user
+        status = containers_status(container_name)
         if status:
             dc = docker.from_env()
-            container = dc.containers.get(s.user)
+            container = dc.containers.get(container_name)
             container.remove(force=True)
-            logger.info(f"container {s.user} deleted")
+            logger.info(f"container {container_name} deleted")
         logger.info(f"deleting session {s.uuid}")
         session.delete(s)
         session.commit()

@@ -13,7 +13,7 @@ services:
     build:
       context: ./proxy
     ports:
-      - "8001:80"
+      - "80:80"
     expose:
       - "80"
     volumes:
