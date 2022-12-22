@@ -129,9 +129,9 @@ async def can_open_session(user):
 async def login(login_form: OAuth2PasswordRequestForm = Depends()):
     username = login_form.username
     password = login_form.password
-    session = orm_session_maker()
     if await check_credentials(username, password):
         if await can_open_session(username):
+            session = orm_session_maker()
             s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
             if not s:
                 s = Session3DSlicer()
@@ -148,6 +148,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 session.commit()
                 # Update nginx.conf and reread Nginx configuration
                 refresh_nginx(session, nginx_config_path, domain, tdslicerhub_adress)
+            session.close()
 
             # Redirect to a session management page:
             return RedirectResponse(url=f"{url_base}/sessions/{s.uuid}", status_code=302)
@@ -173,20 +174,24 @@ async def get_session_management_page(request: Request, session_id: str):
              sess_link=s.url_path,
              sess_user=s.user,
              sess_shared=s.info['shared'])
+    session.close()
     return templates.TemplateResponse("manage_session.html", _)
 
 
 @app.post("/sessions/{session_id}/share")
-async def share_session(request: Request, session_id: str):
+async def share_session(request: Request, session_id: str, interactive: int = 0):
     session = orm_session_maker()
     s = session.query(Session3DSlicer).get(session_id)
     if s:
         s.info["shared"] = True
+        s.info["shared_interactive"] = interactive
         flag_modified(s, "info")
         session.add(s)
         session.commit()
+        session.close()
         return RedirectResponse(url=f"{url_base}/sessions/{session_id}", status_code=302)
     else:
+        session.close()
         return HTMLResponse(content="""<!DOCTYPE html>
                                         <html>
                                           <head>
@@ -207,8 +212,10 @@ async def unshare_session(request: Request, session_id: str):
         flag_modified(s, "info")
         session.add(s)
         session.commit()
+        session.close()
         return RedirectResponse(url=f"{url_base}/sessions/{session_id}", status_code=302)
     else:
+        session.close()
         return HTMLResponse(content="""<!DOCTYPE html>
                                         <html>
                                           <head>
@@ -237,8 +244,10 @@ async def close_session_and_container(session_id):
         session.commit()
         # Update nginx.conf and reread Nginx configuration
         refresh_nginx(session, nginx_config_path, domain, tdslicerhub_adress)
+        session.close()
         return RedirectResponse(url="/", status_code=302)
     else:
+        session.close()
         raise Exception(f"cant remove container user expired")
 
 
@@ -281,7 +290,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
             # Section doing reverse proxy magic
             _ += f"""
 <div class="w3-quarter">
-<a href="http://{domain}{s.url_path}&view_only=true" target="_blank" rel="noopener noreferrer">
+<a href="http://{domain}{s.url_path}&view_only={'true' if s.info.get('interactive', False) else 'false'}" target="_blank" rel="noopener noreferrer">
 <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:23%" class="w3-circle w3-hover-opacity">
 </a>
 <h3>{s.user}</h3>
