@@ -82,6 +82,17 @@ tdslicer_image_tag = "5.0.3"
 tdslicer_image_name = "stevepieper/slicer-chronicle"
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 refresh_nginx(None, nginx_config_path, domain, tdslicerhub_adress)
+max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
+
+
+def count_active_session_containers(sess):
+    # Obtain number of active sessions (with started container)
+    cont = 0
+    for s in sess.query(Session3DSlicer).all():
+        pct = docker_container_pct_activity(s.container_name)
+        if pct != -1:
+            cont += 1
+    return cont
 
 
 # Welcome & login page
@@ -134,20 +145,34 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
             session = orm_session_maker()
             s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
             if not s:
-                s = Session3DSlicer()
-                s.user = username
-                s.last_activity = datetime.datetime.now()
-                session.add(s)
-                session.flush()
-                s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
-                # Launch new 3d slicer container
-                await launch_3dslicer_web_docker_container(s)
-                s.info = {'CPU_pct': 0, 'shared': False}
-                # Commit new
-                session.add(s)
-                session.commit()
-                # Update nginx.conf and reread Nginx configuration
-                refresh_nginx(session, nginx_config_path, domain, tdslicerhub_adress)
+                # Create new session (IF there is room)
+                cont = count_active_session_containers(session)
+                if cont < max_sessions:
+                    s = Session3DSlicer()
+                    s.user = username
+                    s.last_activity = datetime.datetime.now()
+                    session.add(s)
+                    session.flush()
+                    s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
+                    # Launch new 3d slicer container
+                    await launch_3dslicer_web_docker_container(s)
+                    s.info = {'CPU_pct': 0, 'shared': False}
+                    # Commit new
+                    session.add(s)
+                    session.commit()
+                    # Update nginx.conf and reread Nginx configuration
+                    refresh_nginx(session, nginx_config_path, domain, tdslicerhub_adress)
+                else:
+                    return HTMLResponse(content=f"""<!DOCTYPE html>
+                                                    <html>
+                                                      <head>
+                                                        <title>Max number of sessions reached</title>
+                                                      </head>
+                                                      <body>
+                                                      <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
+                                                      </body>
+                                                    </html>""", status_code=401)
+
             session.close()
 
             # Redirect to a session management page:
@@ -252,6 +277,13 @@ async def close_session_and_container(session_id):
 
 
 def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
+
+    if max_sessions < 1000:
+        cont = count_active_session_containers(sess)
+        sessions_cont = f"({cont}/{max_sessions})"
+    else:
+        sessions_cont = ""
+
     _ = """
 <!DOCTYPE html>
 <html>
@@ -279,7 +311,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
         <img src="../static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:45%" class="w3-circle w3-hover-opacity">
     </a>    
        <h3>
-       <a href="{proto}://{domain}/login" target="_blank" rel="noopener noreferrer">New Session</a>
+       <a href="{proto}://{domain}/login" target="_blank" rel="noopener noreferrer">New (or reconnect to) Session {sessions_cont}</a>
        </h3>
     </div>
 
