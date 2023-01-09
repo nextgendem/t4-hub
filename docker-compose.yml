@@ -60,8 +60,6 @@ services:
     container_name: ${TDSLICERHUB_NAME}
     build:
       context: .
-    expose:
-      - "80"
     volumes:
       - ./tsliceh:/app/tsliceh
       - /var/run/docker.sock:/var/run/docker.sock
