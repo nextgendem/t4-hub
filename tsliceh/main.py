@@ -69,7 +69,7 @@ ACTIVITY_THRESHOLD = 10
 nginx_container_name = os.getenv('NGINX_NAME')  # TODO Read from environment variable the name of nginx container relative to this container
 nginx_config_path = os.getenv('NGINX_CONFIG_FILE')  # TODO Read from environment the location of nginx.conf relative to this container
 index_path = os.getenv('INDEX_PATH')
-allowed_inactivity_time_in_seconds = os.getenv("INACTIVITY_TIME_SEC")
+allowed_inactivity_time_in_seconds = int(os.getenv("INACTIVITY_TIME_SEC"))
 network_name = os.getenv('NETWORK_NAME')
 proto = os.getenv('PROTO')
 domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'))
@@ -82,6 +82,17 @@ tdslicer_image_tag = "5.0.3"
 tdslicer_image_name = "stevepieper/slicer-chronicle"
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 refresh_nginx(None, nginx_config_path, domain, tdslicerhub_adress)
+max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
+
+
+def count_active_session_containers(sess):
+    # Obtain number of active sessions (with started container)
+    cont = 0
+    for s in sess.query(Session3DSlicer).all():
+        pct = docker_container_pct_activity(s.container_name)
+        if pct != -1:
+            cont += 1
+    return cont
 
 
 # Welcome & login page
@@ -129,25 +140,40 @@ async def can_open_session(user):
 async def login(login_form: OAuth2PasswordRequestForm = Depends()):
     username = login_form.username
     password = login_form.password
-    session = orm_session_maker()
     if await check_credentials(username, password):
         if await can_open_session(username):
+            session = orm_session_maker()
             s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
             if not s:
-                s = Session3DSlicer()
-                s.user = username
-                s.last_activity = datetime.datetime.now()
-                session.add(s)
-                session.flush()
-                s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
-                # Launch new 3d slicer container
-                await launch_3dslicer_web_docker_container(s)
-                s.info = {'CPU_pct': 0, 'shared': False}
-                # Commit new
-                session.add(s)
-                session.commit()
-                # Update nginx.conf and reread Nginx configuration
-                refresh_nginx(session, nginx_config_path, domain, tdslicerhub_adress)
+                # Create new session (IF there is room)
+                cont = count_active_session_containers(session)
+                if cont < max_sessions:
+                    s = Session3DSlicer()
+                    s.user = username
+                    s.last_activity = datetime.datetime.now()
+                    session.add(s)
+                    session.flush()
+                    s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
+                    # Launch new 3d slicer container
+                    await launch_3dslicer_web_docker_container(s)
+                    s.info = {'CPU_pct': 0, 'shared': False}
+                    # Commit new
+                    session.add(s)
+                    session.commit()
+                    # Update nginx.conf and reread Nginx configuration
+                    refresh_nginx(session, nginx_config_path, domain, tdslicerhub_adress)
+                else:
+                    return HTMLResponse(content=f"""<!DOCTYPE html>
+                                                    <html>
+                                                      <head>
+                                                        <title>Max number of sessions reached</title>
+                                                      </head>
+                                                      <body>
+                                                      <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
+                                                      </body>
+                                                    </html>""", status_code=401)
+
+            session.close()
 
             # Redirect to a session management page:
             return RedirectResponse(url=f"{url_base}/sessions/{s.uuid}", status_code=302)
@@ -173,20 +199,24 @@ async def get_session_management_page(request: Request, session_id: str):
              sess_link=s.url_path,
              sess_user=s.user,
              sess_shared=s.info['shared'])
+    session.close()
     return templates.TemplateResponse("manage_session.html", _)
 
 
 @app.post("/sessions/{session_id}/share")
-async def share_session(request: Request, session_id: str):
+async def share_session(request: Request, session_id: str, interactive: int = 0):
     session = orm_session_maker()
     s = session.query(Session3DSlicer).get(session_id)
     if s:
         s.info["shared"] = True
+        s.info["shared_interactive"] = interactive
         flag_modified(s, "info")
         session.add(s)
         session.commit()
+        session.close()
         return RedirectResponse(url=f"{url_base}/sessions/{session_id}", status_code=302)
     else:
+        session.close()
         return HTMLResponse(content="""<!DOCTYPE html>
                                         <html>
                                           <head>
@@ -207,8 +237,10 @@ async def unshare_session(request: Request, session_id: str):
         flag_modified(s, "info")
         session.add(s)
         session.commit()
+        session.close()
         return RedirectResponse(url=f"{url_base}/sessions/{session_id}", status_code=302)
     else:
+        session.close()
         return HTMLResponse(content="""<!DOCTYPE html>
                                         <html>
                                           <head>
@@ -237,12 +269,21 @@ async def close_session_and_container(session_id):
         session.commit()
         # Update nginx.conf and reread Nginx configuration
         refresh_nginx(session, nginx_config_path, domain, tdslicerhub_adress)
+        session.close()
         return RedirectResponse(url="/", status_code=302)
     else:
+        session.close()
         raise Exception(f"cant remove container user expired")
 
 
 def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
+
+    if max_sessions < 1000:
+        cont = count_active_session_containers(sess)
+        sessions_cont = f"({cont}/{max_sessions})"
+    else:
+        sessions_cont = ""
+
     _ = """
 <!DOCTYPE html>
 <html>
@@ -270,7 +311,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
         <img src="../static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:45%" class="w3-circle w3-hover-opacity">
     </a>    
        <h3>
-       <a href="{proto}://{domain}/login" target="_blank" rel="noopener noreferrer">New Session</a>
+       <a href="{proto}://{domain}/login" target="_blank" rel="noopener noreferrer">New (or reconnect to) Session {sessions_cont}</a>
        </h3>
     </div>
 
@@ -281,7 +322,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
             # Section doing reverse proxy magic
             _ += f"""
 <div class="w3-quarter">
-<a href="http://{domain}{s.url_path}&view_only=true" target="_blank" rel="noopener noreferrer">
+<a href="http://{domain}{s.url_path}&view_only={'true' if s.info.get('interactive', False) else 'false'}" target="_blank" rel="noopener noreferrer">
 <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:23%" class="w3-circle w3-hover-opacity">
 </a>
 <h3>{s.user}</h3>

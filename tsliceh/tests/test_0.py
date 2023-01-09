@@ -13,6 +13,7 @@ from tsliceh import Session3DSlicer
 import pytest
 import os
 import logging
+from tsliceh.main import CONTAINER_NAME_PREFIX
 data = {"username": "free_user", "password": "test"}
 
 
@@ -76,7 +77,7 @@ def test_launch_container(client):
     assert response.status_code == 302
     dc = docker.from_env()
     try:
-        status = dc.containers.get(data["username"]).status
+        status = dc.containers.get(CONTAINER_NAME_PREFIX + data["username"]).status
         assert status == "running"
     except AssertionError as error:
         print(error)
@@ -93,7 +94,7 @@ def test_delete_container_and_session(client):
     # is the container alive?
     dc = docker.from_env()
     try:
-        status = dc.containers.get(data["username"]).status
+        status = dc.containers.get(CONTAINER_NAME_PREFIX + data["username"]).status
         assert status == "running"
     except AssertionError as error:
         logger.info(error)
@@ -104,7 +105,7 @@ def test_delete_container_and_session(client):
     time.sleep(waiting)
     # any container?
     try:
-        c = dc.containers.get(data["username"])
+        c = dc.containers.get(CONTAINER_NAME_PREFIX + data["username"])
     except:
         c = None
     assert c is None
@@ -128,3 +129,18 @@ def test_delete_container_and_session(client):
 def test_restart_session():
     # how to mock activity??????????
     pass
+
+def test_create_volume(client):
+    from tsliceh.volumes import volume_dict, vol_dict
+    test_launch_container(client)
+    dc = docker.from_env()
+    volumes = volume_dict(data["username"])
+    container = dc.containers.get(CONTAINER_NAME_PREFIX + data["username"])
+    l = list()
+    # "{f"{user}_{k}": {"bind": v, "mode": "rw"}})"
+    for k,v in volumes.items():
+        l.append(k + ":" + v["bind"] + ":" + v["mode"])
+    l.sort()
+    binds = container.attrs["HostConfig"]["Binds"]
+    binds.sort()
+    assert l == binds
