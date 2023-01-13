@@ -83,6 +83,7 @@ tdslicer_image_name = "stevepieper/slicer-chronicle"
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 refresh_nginx(None, nginx_config_path, domain, tdslicerhub_adress)
 max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
+slicer_ini = os.getenv("SLICER_INI")
 
 
 def count_active_session_containers(sess):
@@ -156,7 +157,8 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                     s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
                     # Launch new 3d slicer container
                     await launch_3dslicer_web_docker_container(s)
-                    s.info = {'CPU_pct': 0, 'shared': False}
+                    pct = docker_container_pct_activity(s.container_name)
+                    s.info = {'CPU_pct': pct, 'shared': False}
                     # Commit new
                     session.add(s)
                     session.commit()
