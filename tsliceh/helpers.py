@@ -80,8 +80,9 @@ def container_stats(name_id=None):
 
 
 # thanks to https://github.com/TomasTomecek/sen/blob/master/sen/util.py#L158
+# cambio en cpu_count
 def calculate_cpu_percent(d):
-    cpu_count = len(d["cpu_stats"]["cpu_usage"]["percpu_usage"])
+    cpu_count = float(d["cpu_stats"]["online_cpus"]) # cuántos cpus hay
     cpu_percent = 0.0
     cpu_delta = float(d["cpu_stats"]["cpu_usage"]["total_usage"]) - \
                 float(d["precpu_stats"]["cpu_usage"]["total_usage"])
