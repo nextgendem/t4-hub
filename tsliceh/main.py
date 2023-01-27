@@ -83,6 +83,7 @@ tdslicer_image_name = "stevepieper/slicer-chronicle"
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 refresh_nginx(None, nginx_config_path, domain, tdslicerhub_adress)
 max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
+slicer_ini = os.getenv("SLICER_INI")
 
 
 def count_active_session_containers(sess):
@@ -156,7 +157,8 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                     s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
                     # Launch new 3d slicer container
                     await launch_3dslicer_web_docker_container(s)
-                    s.info = {'CPU_pct': 0, 'shared': False}
+                    pct = docker_container_pct_activity(s.container_name)
+                    s.info = {'CPU_pct': pct, 'shared': False}
                     # Commit new
                     session.add(s)
                     session.commit()
@@ -322,7 +324,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
             # Section doing reverse proxy magic
             _ += f"""
 <div class="w3-quarter">
-<a href="http://{domain}{s.url_path}&view_only={'true' if s.info.get('interactive', False) else 'false'}" target="_blank" rel="noopener noreferrer">
+<a href="http://{domain}{s.url_path}&view_only={'false' if s.info.get('shared_interactive', 0) else 'true'}" target="_blank" rel="noopener noreferrer">
 <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:23%" class="w3-circle w3-hover-opacity">
 </a>
 <h3>{s.user}</h3>

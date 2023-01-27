@@ -1,3 +1,5 @@
+import os
+
 import docker
 import docker.errors
 
@@ -50,5 +52,9 @@ def volume_dict(user):
     for k, v in vol_dict.items():
         # {"pmoreno_workspace": {"bind":"/var/cache/apt", "mode":"ro"}}
         d.update({f"{user}_{k}": {"bind": v, "mode": "rw"}}) # modes??
-#    d.update({"/home/paula/Documentos/opendx28/3dslicerhub/researcher": {"bind": "/home/"}})
+    # now Slicer.ini is not modifiable by the user... this is a kind of general configuration
+    # TODO CREATE A {USER_ID} SLICER.INI (managing persistence)
+    # from tsliceh.main import slicer_ini
+    # d.update({slicer_ini: {"bind": "/home/researcher/.config/NA-MIC/Slicer.ini", "mode": "ro"}
+    #           })
     return d
