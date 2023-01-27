@@ -324,7 +324,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
             # Section doing reverse proxy magic
             _ += f"""
 <div class="w3-quarter">
-<a href="http://{domain}{s.url_path}&view_only={'true' if s.info.get('interactive', False) else 'false'}" target="_blank" rel="noopener noreferrer">
+<a href="http://{domain}{s.url_path}&view_only={'false' if s.info.get('shared_interactive', 0) else 'true'}" target="_blank" rel="noopener noreferrer">
 <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:23%" class="w3-circle w3-hover-opacity">
 </a>
 <h3>{s.user}</h3>
