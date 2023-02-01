@@ -7,13 +7,28 @@ version: "3.3"
 
 services:
 
+  3dslicer-hub:
+    image: opendx/tslicerh
+    container_name: ${TDSLICERHUB_NAME}
+    build:
+      context: .
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./proxy/nginx.conf:/app/proxy/nginx.conf
+      - 3dslicer-hub-volume:/srv
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1 # Prevents Python from writing pyc files to disc (equivalent to
+
   proxy:
     image: opendx/nginx
     container_name: ${NGINX_NAME}
     build:
       context: ./proxy
+    depends_on:
+      - 3dslicer-hub
     ports:
-      - "80:80"
+      - "8001:80"
     expose:
       - "80"
     volumes:
@@ -54,21 +69,6 @@ services:
       - LDAP_READONLY_USER_USERNAME=user-ro
       - LDAP_READONLY_USER_PASSWORD=ro_pass
 
-
-  3dslicer-hub:
-    image: opendx/tslicerh
-    container_name: ${TDSLICERHUB_NAME}
-    build:
-      context: .
-    volumes:
-      - ./tsliceh:/app/tsliceh
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./proxy/nginx.conf:/app/proxy/nginx.conf
-      - ./tsliceh.env:/app/.env
-      - 3dslicer-hub-volume:/srv
-    environment:
-      - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE=1 # Prevents Python from writing pyc files to disc (equivalent to
 
 volumes:
   3dslicer-hub-volume:

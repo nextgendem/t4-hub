@@ -1,5 +1,7 @@
 FROM python:3.10.7-slim-buster
 
+# docker build -t opendx/tslicerh .
+
 # NORMAL
 RUN apt-get update && \
     apt-get -y install \
@@ -43,7 +45,7 @@ CMD ["supervisord", "-c", "/etc/supervisord.conf"]
 
 EXPOSE 80
 
-COPY tsliceh.env /app/.env
+COPY tsliceh_local.env /app/.env
 COPY users /app/user
 COPY proxy /app/proxy
 COPY tsliceh /app/tsliceh

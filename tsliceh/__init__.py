@@ -2,14 +2,11 @@ import datetime
 import os
 import uuid
 
-import docker
-from python_on_whales import docker as docker_ow
-from docker.errors import APIError
 from sqlalchemy import Column, JSON, Boolean, String, DateTime, TypeDecorator, CHAR
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 
-from tsliceh.helpers import containers_status, get_container_ip
+from tsliceh.orchestrators import get_container_ip, containers_status, IContainerOrchestrator, docker_compose_up
 
 
 class GUID(TypeDecorator):
@@ -96,10 +93,10 @@ def get_ldap_adress(mode, openldap_name, net_id):
     return ldap_adress
 
 
-def get_domain_name(mode, domain_name):
+def get_domain_name(mode, domain_name, port=None):
     from dotenv import load_dotenv
     if mode == "local":
-        return domain_name + ":8000"
+        return domain_name + f":{port if port is not None else 8000}"
     else:
         externalIP  = os.popen('curl -s ifconfig.me').readline()
         print(externalIP)
@@ -159,61 +156,7 @@ def get_domain_name(mode, domain_name):
 #         results = e
 
 
-def docker_compose_up():
-    compose = docker_ow.compose.up(detach=True)
-    for container in docker_ow.compose.ps():
-        status = containers_status(container.name)
-        print(f"{container.name} : {status}")
-        if status == "exited":
-            raise APIError(500, f"Error running {container.name} : status : {status}")
-
-
-def create_docker_network(network_name):
-    """
-    A partir del nomber de red que aparece en .env crea una red.
-    En el paso de que se hayan creado varias reds con este nombre, las borra y crea una nueva.
-    :param network_name:
-    :return: network_id
-    TODO revisar si viene bien hacer borrón y cuenta nueva
-    """
-    dc = docker.from_env()
-    # print("networks inside container " + dc.networks.list(names = network_name))
-    networks_list = dc.networks.list(names=network_name)
-    for n in networks_list:
-        print(f"NETWORK {n.id}:{n.name}:")
-        for c in n.containers:
-            print(f"......{c.name}")
-    if len(networks_list) > 0:
-        if len(networks_list) > 1:
-            for network in networks_list:
-                # check if there are containers attached to the network
-                if len(network.containers) == 0:
-                    network.remove()
-                networks_list = dc.networks.list(names=network_name)
-    if len(networks_list) == 1:
-        return networks_list[0].id
-    elif len(networks_list) == 0:
-        network = dc.networks.create(network_name, driver="bridge")
-        return network.id
-    else:
-        raise APIError(500, details=f"There is more than one {network_name} network active")
-
-
-def pull_tdslicer_image(image_name, image_tag):
-    dc = docker.from_env()
-    image_full_name = f"{image_name}:{image_tag}"
-    images = dc.images.list()
-    for image in images:
-        if image_full_name in image.tags:
-            print(f"image {image} already in the system")
-            return
-    try:
-        dc.images.pull(image_name, tag=image_tag)
-    except docker.errors.APIError as e:
-        raise Exception(e)
-
-
-def refresh_nginx(sess, nginx_cfg_path, domainn, tds_address):
+def refresh_nginx(co: IContainerOrchestrator, sess, nginx_cfg_path, domainn, tds_address):
     def generate_nginx_conf():
         """ For each session, generate a section, plus the first part """
         # TODO "nginx.conf" prefix
@@ -229,7 +172,7 @@ http {{
     server_name  {domainn};
 
     location / {{
-    proxy_pass http://{tds_address}/;
+      proxy_pass http://{tds_address};
     }}
 
     """
@@ -268,22 +211,15 @@ http {{
         nginx_container_name = os.getenv("NGINX_NAME")  # TODO Pass (inject) as parameter
         tries = 0
         while tries < 6:
-            status = containers_status(nginx_container_name)
+            status = co.get_container_status(nginx_container_name)
+            # TODO Needs better handling of statuses
             if status == "running":
-                dc = docker.from_env()
-                nginx = dc.containers.get(nginx_container_name)
-                # logger.info("RELOADING NGINX FILE")
-                try:
-                    r = nginx.exec_run("/etc/init.d/nginx reload")
-                    # logger.info(r.output)
+                r = co.execute_cmd_in_container(nginx_container_name, "/etc/init.d/nginx reload")
+                if r is None:
+                    co.start_base_containers()
+                else:
                     return r
-                except docker.errors.APIError as e:
-                    # logger.warning(e.response)
-                    # logger.info("trying to reload nginx proxy")
-                    for tries in range(5):
-                        docker_compose_up()
-                    raise Exception(500, "Error when reloading nginx.conf")
-
+            tries += 1
 
     # -----------------------------------------------
 
