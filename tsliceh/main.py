@@ -28,7 +28,7 @@ from starlette.responses import RedirectResponse, HTMLResponse
 import ldap3
 from ldap3.core.exceptions import LDAPException
 from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, create_docker_network, \
-    refresh_nginx, pull_tdslicer_image, get_ldap_adress, get_domain_name
+    refresh_nginx, create_tdslicer_image, get_ldap_adress, get_domain_name
 from tsliceh.volumes import create_all_volumes, volume_dict
 from tsliceh.helpers import get_container_internal_adress, containers_status, \
     container_stats, calculate_cpu_percent
@@ -78,8 +78,11 @@ network_id = create_docker_network(network_name)
 tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id) if os.getenv(
     "MODE") != "local" else domain
 ldap_adress = get_ldap_adress(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
-tdslicer_image_tag = "5.0.3"
-tdslicer_image_name = "stevepieper/slicer-chronicle"
+# tdslicer_image_tag = "5.0.3"
+# tdslicer_image_name = "stevepieper/slicer-chronicle"
+tdslicer_image_name = "opendx/slicer-chronicle5.0.3"
+tdslicer_image_tag = "latest"
+tdslicer_image_path = os.getenv("SLICER_IMAGE_DOCKERFILE")
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 refresh_nginx(None, nginx_config_path, domain, tdslicerhub_adress)
 max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
@@ -350,7 +353,7 @@ async def launch_3dslicer_web_docker_container(s: Session3DSlicer):
     # just a container per user
     container_name = CONTAINER_NAME_PREFIX + s.user
     logger.info("CREATING NEW CONTAINER")
-    pull_tdslicer_image(tdslicer_image_name, tdslicer_image_tag)
+    create_tdslicer_image(tdslicer_image_name, tdslicer_image_tag)
     create_all_volumes(s.user)
     vol_dict = volume_dict(s.user)
     c = dc.containers.run(image=f"{tdslicer_image_name}:{tdslicer_image_tag}", ports={"8080/tcp": None},

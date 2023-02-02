@@ -199,7 +199,7 @@ def create_docker_network(network_name):
         raise APIError(500, details=f"There is more than one {network_name} network active")
 
 
-def pull_tdslicer_image(image_name, image_tag):
+def create_tdslicer_image(image_name, image_tag):
     dc = docker.from_env()
     image_full_name = f"{image_name}:{image_tag}"
     images = dc.images.list()
@@ -207,10 +207,14 @@ def pull_tdslicer_image(image_name, image_tag):
         if image_full_name in image.tags:
             print(f"image {image} already in the system")
             return
-    try:
-        dc.images.pull(image_name, tag=image_tag)
-    except docker.errors.APIError as e:
-        raise Exception(e)
+    if image_full_name.startswith("opendx"):
+        from tsliceh.main import tdslicer_image_name, tdslicer_image_path
+        dc.images.build(path =tdslicer_image_path, tag = tdslicer_image_name )
+    else:
+        try:
+            dc.images.pull(image_name, tag=image_tag)
+        except docker.errors.APIError as e:
+            raise Exception(e)
 
 
 def refresh_nginx(sess, nginx_cfg_path, domainn, tds_address):
