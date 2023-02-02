@@ -23,6 +23,10 @@ RUN apt-get update && \
     python-pytest \
     && apt-get clean
 
+RUN curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl && \
+    chmod +x ./kubectl && \
+    mv ./kubectl /usr/local/bin/kubectl
+
 # COMMON
 RUN pip3 install --no-cache-dir --upgrade pip && \
     pip3 install --no-cache-dir git+https://github.com/Supervisor/supervisor gunicorn
