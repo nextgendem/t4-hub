@@ -8,7 +8,7 @@ import docker
 from docker.errors import APIError
 from fastapi.logger import logger
 from python_on_whales import docker as docker_ow
-import kubernetes
+#import kubernetes
 #from kubernetes import client, config
 
 
@@ -71,7 +71,7 @@ class IContainerOrchestrator(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def pull_image(self, image_name, image_tag):
+    def create_image(self, image_name, image_tag):
         pass
 
     @abc.abstractmethod
@@ -199,8 +199,8 @@ class DockerCompose(IContainerOrchestrator):
             removed = None
         return removed
 
-    def pull_image(self, image_name, image_tag):
-        pull_image(image_name, image_tag)
+    def create_image(self, image_name, image_tag):
+        create_image(image_name, image_tag)
 
     def execute_cmd_in_container(self, container_name, cmd):
         dc = docker.from_env()
@@ -289,7 +289,7 @@ class Kubernetes(IContainerOrchestrator):
         # kubectl delete pod <container_name>
         pass
 
-    def pull_image(self, image_name, image_tag):
+    def create_image(self, image_name, image_tag):
         pass
 
 
@@ -431,7 +431,7 @@ def container_stats(name_id=None):
     return stats
 
 
-def pull_image(image_name, image_tag):
+def create_image(image_name, image_tag):
     dc = docker.from_env()
     image_full_name = f"{image_name}:{image_tag}"
     images = dc.images.list()
@@ -439,10 +439,15 @@ def pull_image(image_name, image_tag):
         if image_full_name in image.tags:
             print(f"image {image} already in the system")
             return
-    try:
-        dc.images.pull(image_name, tag=image_tag)
-    except docker.errors.APIError as e:
-        raise Exception(e)
+    if image_full_name.startswith("opendx"):
+        from tsliceh.main import tdslicer_image_name, tdslicer_image_path
+        dc.images.build(path =tdslicer_image_path, tag = tdslicer_image_name )
+    else:
+        try:
+            dc.images.pull(image_name, tag=image_tag)
+        except docker.errors.APIError as e:
+            raise Exception(e)
+
 
 
 def docker_compose_up():

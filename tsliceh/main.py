@@ -77,8 +77,11 @@ domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT
 url_base = f"{proto}://{domain}"
 network_id = create_docker_network(network_name)
 ldap_adress = get_ldap_adress(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
-tdslicer_image_tag = "5.0.3"
-tdslicer_image_name = "stevepieper/slicer-chronicle"
+# tdslicer_image_tag = "5.0.3"
+# tdslicer_image_name = "stevepieper/slicer-chronicle"
+tdslicer_image_name = "opendx/slicer-chronicle5.0.3"
+tdslicer_image_tag = "latest"
+tdslicer_image_path = os.getenv("SLICER_IMAGE_DOCKERFILE")
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="docker_compose")
 if co_str == "docker_compose":
@@ -350,7 +353,7 @@ async def launch_3dslicer_web_container(s: Session3DSlicer):
     # just a container per user
     container_name = CONTAINER_NAME_PREFIX + s.user
     logger.info("CREATING NEW CONTAINER")
-    container_orchestrator.pull_image(tdslicer_image_name, tdslicer_image_tag)
+    container_orchestrator.create_image(tdslicer_image_name, tdslicer_image_tag)
     create_all_volumes(container_orchestrator, s.user)
     vol_dict = volume_dict(s.user)
     c = await container_orchestrator.start_container(container_name, tdslicer_image_name, tdslicer_image_tag, network_id, vol_dict)
