@@ -27,11 +27,11 @@ from starlette.responses import RedirectResponse, HTMLResponse
 
 import ldap3
 from ldap3.core.exceptions import LDAPException
-from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, create_docker_network, \
-    refresh_nginx, create_tdslicer_image, get_ldap_adress, get_domain_name
+from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, refresh_nginx, \
+    get_ldap_adress, get_domain_name
+from tsliceh.orchestrators import DockerCompose, Kubernetes, create_docker_network
 from tsliceh.volumes import create_all_volumes, volume_dict
-from tsliceh.helpers import get_container_internal_adress, containers_status, \
-    container_stats, calculate_cpu_percent
+from tsliceh.helpers import get_container_internal_adress
 import logging.config
 from fastapi.logger import logger
 import logging
@@ -55,7 +55,8 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
-load_dotenv()
+env_file = os.getenv("ENV_FILE", None)
+load_dotenv(env_file)
 
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
@@ -72,11 +73,9 @@ index_path = os.getenv('INDEX_PATH')
 allowed_inactivity_time_in_seconds = int(os.getenv("INACTIVITY_TIME_SEC"))
 network_name = os.getenv('NETWORK_NAME')
 proto = os.getenv('PROTO')
-domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'))
+domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT', default=None))
 url_base = f"{proto}://{domain}"
 network_id = create_docker_network(network_name)
-tdslicerhub_adress = get_container_internal_adress(os.getenv("TDSLICERHUB_NAME"), network_id) if os.getenv(
-    "MODE") != "local" else domain
 ldap_adress = get_ldap_adress(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
 # tdslicer_image_tag = "5.0.3"
 # tdslicer_image_name = "stevepieper/slicer-chronicle"
@@ -84,7 +83,14 @@ tdslicer_image_name = "opendx/slicer-chronicle5.0.3"
 tdslicer_image_tag = "latest"
 tdslicer_image_path = os.getenv("SLICER_IMAGE_DOCKERFILE")
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
-refresh_nginx(None, nginx_config_path, domain, tdslicerhub_adress)
+co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="docker_compose")
+if co_str == "docker_compose":
+    container_orchestrator = DockerCompose()
+elif co_str == "kubernetes":
+    container_orchestrator = Kubernetes()
+tdslicerhub_adress = get_container_internal_adress(container_orchestrator, os.getenv("TDSLICERHUB_NAME"), network_id) \
+    if os.getenv("MODE") != "local" else domain
+refresh_nginx(container_orchestrator, None, nginx_config_path, domain, tdslicerhub_adress)
 max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
 slicer_ini = os.getenv("SLICER_INI")
 
@@ -93,7 +99,7 @@ def count_active_session_containers(sess):
     # Obtain number of active sessions (with started container)
     cont = 0
     for s in sess.query(Session3DSlicer).all():
-        pct = docker_container_pct_activity(s.container_name)
+        pct = container_orchestrator.get_container_activity(s.container_name)
         if pct != -1:
             cont += 1
     return cont
@@ -103,7 +109,6 @@ def count_active_session_containers(sess):
 @app.get("/index.html")
 async def index_page():
     session = orm_session_maker()
-
     return HTMLResponse(content=refresh_index_html(session, proto=proto, admin=False, write_to_file=False),
                         status_code=200)
 
@@ -159,14 +164,14 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                     session.flush()
                     s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
                     # Launch new 3d slicer container
-                    await launch_3dslicer_web_docker_container(s)
-                    pct = docker_container_pct_activity(s.container_name)
+                    await launch_3dslicer_web_container(s)
+                    pct = container_orchestrator.get_container_activity(s.container_name)
                     s.info = {'CPU_pct': pct, 'shared': False}
                     # Commit new
                     session.add(s)
                     session.commit()
                     # Update nginx.conf and reread Nginx configuration
-                    refresh_nginx(session, nginx_config_path, domain, tdslicerhub_adress)
+                    refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
                 else:
                     return HTMLResponse(content=f"""<!DOCTYPE html>
                                                     <html>
@@ -181,7 +186,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
             session.close()
 
             # Redirect to a session management page:
-            return RedirectResponse(url=f"{url_base}/sessions/{s.uuid}", status_code=302)
+            return RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
     else:
         return HTMLResponse(content="""<!DOCTYPE html>
                                         <html>
@@ -219,7 +224,7 @@ async def share_session(request: Request, session_id: str, interactive: int = 0)
         session.add(s)
         session.commit()
         session.close()
-        return RedirectResponse(url=f"{url_base}/sessions/{session_id}", status_code=302)
+        return RedirectResponse(url=f"/sessions/{session_id}", status_code=302)
     else:
         session.close()
         return HTMLResponse(content="""<!DOCTYPE html>
@@ -243,7 +248,7 @@ async def unshare_session(request: Request, session_id: str):
         session.add(s)
         session.commit()
         session.close()
-        return RedirectResponse(url=f"{url_base}/sessions/{session_id}", status_code=302)
+        return RedirectResponse(url=f"/sessions/{session_id}", status_code=302)
     else:
         session.close()
         return HTMLResponse(content="""<!DOCTYPE html>
@@ -263,17 +268,15 @@ async def close_session_and_container(session_id):
     s = session.query(Session3DSlicer).get(session_id)
     if s:
         container_name = CONTAINER_NAME_PREFIX + s.user
-        status = containers_status(container_name)
+        status = container_orchestrator.get_container_status(container_name)
         if status:
-            dc = docker.from_env()
-            container = dc.containers.get(container_name)
-            container.remove(force=True)
+            stop_remove_container(container_name, True)
             logger.info(f"container {container_name} deleted")
         logger.info(f"deleting session {s.uuid}")
         session.delete(s)
         session.commit()
         # Update nginx.conf and reread Nginx configuration
-        refresh_nginx(session, nginx_config_path, domain, tdslicerhub_adress)
+        refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
         session.close()
         return RedirectResponse(url="/", status_code=302)
     else:
@@ -312,11 +315,11 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
     """
     _ += f"""
     <div class="w3-quarter">
-    <a href="{proto}://{domain}/login" target="_blank" rel="noopener noreferrer">
+    <a href="/login" target="_blank" rel="noopener noreferrer">
         <img src="../static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:45%" class="w3-circle w3-hover-opacity">
     </a>    
        <h3>
-       <a href="{proto}://{domain}/login" target="_blank" rel="noopener noreferrer">New (or reconnect to) Session {sessions_cont}</a>
+       <a href="/login" target="_blank" rel="noopener noreferrer">New (or reconnect to) Session {sessions_cont}</a>
        </h3>
     </div>
 
@@ -327,7 +330,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
             # Section doing reverse proxy magic
             _ += f"""
 <div class="w3-quarter">
-<a href="http://{domain}{s.url_path}&view_only={'false' if s.info.get('shared_interactive', 0) else 'true'}" target="_blank" rel="noopener noreferrer">
+<a href="{s.url_path}&view_only={'false' if s.info.get('shared_interactive', 0) else 'true'}" target="_blank" rel="noopener noreferrer">
 <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:23%" class="w3-circle w3-hover-opacity">
 </a>
 <h3>{s.user}</h3>
@@ -343,42 +346,25 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
     return _
 
 
-async def launch_3dslicer_web_docker_container(s: Session3DSlicer):
+async def launch_3dslicer_web_container(s: Session3DSlicer):
     """
     Launch a 3DSlicer web container
     """
-    # docker client:
-    active = False
-    dc = docker.from_env()
     # just a container per user
     container_name = CONTAINER_NAME_PREFIX + s.user
     logger.info("CREATING NEW CONTAINER")
-    create_tdslicer_image(tdslicer_image_name, tdslicer_image_tag)
-    create_all_volumes(s.user)
+    container_orchestrator.create_image(tdslicer_image_name, tdslicer_image_tag)
+    create_all_volumes(container_orchestrator, s.user)
     vol_dict = volume_dict(s.user)
-    c = dc.containers.run(image=f"{tdslicer_image_name}:{tdslicer_image_tag}", ports={"8080/tcp": None},
-                          name=container_name,
-                          network=network_id,
-                          volumes=vol_dict,
-                          detach=True)
-    container_id = c.id
-    while not active:
-        # TODO mejorar: crear funcion check_state
-        await asyncio.sleep(3)
-        c = dc.containers.get(container_id)
-        if c.status == "running":
-            active = True
-        if c.status == "exited":
-            logger.info("container exited")
-            break
+    c = await container_orchestrator.start_container(container_name, tdslicer_image_name, tdslicer_image_tag, network_id, vol_dict)
     logs = c.logs
     # todo error control
-    s.service_address = get_container_internal_adress(c.id, network_id)
+    s.service_address = get_container_internal_adress(container_orchestrator, c.id, network_id)
     s.container_name = container_name
     logger.info(f"container {c.name} : {c.status} in {s.service_address}")
 
 
-def stop_remove_docker_container(name):
+def stop_remove_container(name, force_remove=False):
     """
     in certain session, stop container when:
     - session expires
@@ -388,46 +374,15 @@ def stop_remove_docker_container(name):
     :return:
     """
     # TODO MANAGE THOSE PRINTS
-    dc = docker.from_env()
-    try:
-        c = dc.containers.get(name)
-        can_remove = False
-        status = containers_status(c.id)
-        if status:
-            if status == "running":
-                try:
-                    c.stop()
-                    c.reload()
-                    can_remove = True
-                except:
-                    can_remove = False
-                    print(f"can't stop container {name}")
-        if c.status == "exited" or can_remove:
-            c.remove()
-            status = containers_status(name)
-            if not status:
-                logger.info(f"container {name} : removed")
-            else:
-                logger.info(f"can't remove {name}")
-    except:
-        logger.info(f"{name} container already removed")
-
-
-def docker_container_pct_activity(container_id_name):
-    """
-    Obtain the percentage of activity of a container
-    -1 if the container does not exist
-
-    :param container_id_name: container id or name
-    :return: -c if such container does not exist or real cpu percentage
-    """
-    dc = docker.from_env()
-    try:
-        c = dc.containers.get(container_id_name)
-        stats = container_stats(c.id)
-        return calculate_cpu_percent(stats)
-    except:
-        return -1
+    stopped = container_orchestrator.stop_container(name)
+    if stopped is True:
+        removed = container_orchestrator.remove_container(name, force_remove)
+        if removed:
+            logger.info(f"container {name} : removed")
+        elif removed is False:
+            logger.info(f"can't remove {name}")
+        else:
+            logger.info(f"container {name} : does not exist")
 
 
 class BackgroundRunner:
@@ -437,7 +392,7 @@ class BackgroundRunner:
     async def sessions_checker(self, sm):
         async def check_session_activity():
             print(":::::::::::::::::::::::Checking Session Activity:::::::::::::::::::::::::::::::::::")
-            pct = docker_container_pct_activity(s.container_name)
+            pct = container_orchestrator.get_container_activity(s.container_name)
             logger.info(f"pct container: {s.container_name}: {pct} ")
             s.info['CPU_pct'] = pct
             flag_modified(s, "info")
@@ -452,17 +407,12 @@ class BackgroundRunner:
         # ---- sessions_checker ----------------------------------------------------------------------------------------
         logger.info("::::::::::::::::::::::: Session Checker :::::::::::::::::::::::::::::::::::")
 
-        dc = docker.from_env()
-        try:
-            tdslicer_containers = [c.name for c in dc.containers.list(all)]
-        except Exception as e:
-            logger.info(f"::::::::::::::::: sessions_checker - EXCEPTION no containers. {e}")
-            return None
+        tdslicer_containers = container_orchestrator.get_tdscontainers(CONTAINER_NAME_PREFIX)
 
         # Reassociate, restart or delete 3D Slicer sessions if we are back from a restart of the container
         sess = sm()
         for s in sess.query(Session3DSlicer).all():
-            pct = docker_container_pct_activity(s.container_name)
+            pct = container_orchestrator.get_container_activity(s.container_name)
             logger.info(f"pct container: {s.container_name}: {pct} ")
             s.last_activity = datetime.datetime.now()
             s.info['CPU_pct'] = pct
@@ -470,7 +420,7 @@ class BackgroundRunner:
                 if s.restart:
                     # TODO right now "restart" is always False so this is never executed
                     logger.info(f"::::::::::::::::: sessions_checker - restarting container for user {s.user}")
-                    await launch_3dslicer_web_docker_container(s)
+                    await launch_3dslicer_web_container(s)
                     s.info['CPU_pct'] = ACTIVITY_THRESHOLD + 1
                     sess.add(s)
                 else:
@@ -484,7 +434,7 @@ class BackgroundRunner:
                     sess.add(s)
                 else:
                     logger.info(f"::::::::::::::::: sessions_checker - removing container and session for {s.user}, with container {s.container_name}")
-                    stop_remove_docker_container(s.container_name)
+                    stop_remove_container(s.container_name)
                     tdslicer_containers.remove(s.container_name)
                     sess.delete(s)
             flag_modified(s, "info")
@@ -492,14 +442,13 @@ class BackgroundRunner:
         sess.commit()
         sess.close()
         # Update nginx.conf and reread Nginx configuration
-        refresh_nginx(sess, nginx_config_path, domain, tdslicerhub_adress)
+        refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
 
         # Remove dangling 3dslicer containers managed by 3dslicer-hub
         for name in tdslicer_containers:
             if name.startswith(CONTAINER_NAME_PREFIX):
                 logger.info(f"::::::::::::::::: sessions_checker - removing container {name} with no associated session")
-                stop_remove_docker_container(name)
-            await asyncio.sleep(200)
+                stop_remove_container(name)
 
         # After initialization, infinite loop
         while True:
@@ -510,10 +459,10 @@ class BackgroundRunner:
                 sess.add(s)
                 if stop:
                     logger.info(f"::::::::::::::::: sessions_checker - inactivity cleanup - stopping container {s.container_name}")
-                    stop_remove_docker_container(s.container_name)
+                    stop_remove_container(s.container_name)
                     sess.delete(s)
                     # Update nginx.conf and reread Nginx configuration
-                    refresh_nginx(sess, nginx_config_path, domain, tdslicerhub_adress)
+                    refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
 
             sess.commit()
             sess.close()
