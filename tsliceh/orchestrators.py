@@ -1,18 +1,25 @@
 import abc
 import asyncio
 import json
+import os
 import subprocess
+import tempfile
 from time import sleep
+from io import StringIO
 
 import docker
+import yaml
 from docker.errors import APIError
-from fastapi.logger import logger
 from python_on_whales import docker as docker_ow
-#import kubernetes
-#from kubernetes import client, config
+import pandas as pd
+from fastapi.logger import logger
 
 
 class IContainerOrchestrator(abc.ABC):
+    @abc.abstractmethod
+    def get_valid_name(self, name):
+        pass
+
     @abc.abstractmethod
     def get_tdscontainers(self, prefix):
         pass
@@ -46,18 +53,6 @@ class IContainerOrchestrator(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_container_stats(self, container_name):
-        pass
-
-    @abc.abstractmethod
-    def container_exists(self, container_name):
-        pass
-
-    @abc.abstractmethod
-    def create_container(self, container_name, image_name):
-        pass
-
-    @abc.abstractmethod
     async def start_container(self, container_name, image_name, image_tag,
                               network_id, vol_dict, wait_until_running):  # "run" also
         pass
@@ -75,7 +70,7 @@ class IContainerOrchestrator(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def execute_cmd_in_container(self, container_name, cmd):
+    def execute_cmd_in_nginx_container(self, container_name, cmd):
         pass
 
     @abc.abstractmethod
@@ -90,6 +85,9 @@ class IContainerOrchestrator(abc.ABC):
 class DockerCompose(IContainerOrchestrator):
     def __init__(self, compose_file=None):
         self.compose_file = compose_file
+
+    def get_valid_name(self, name):
+        return name
 
     def get_tdscontainers(self, prefix=""):
         dc = docker.from_env()
@@ -122,12 +120,6 @@ class DockerCompose(IContainerOrchestrator):
 
     def get_container_stats(self, container_name):
         return container_stats(container_name)
-
-    def container_exists(self, container_name):
-        pass
-
-    def create_container(self, container_name, image_name):
-        pass
 
     async def start_container(self, container_name, image_name, image_tag,
                         network_id, vol_dict,
@@ -202,7 +194,7 @@ class DockerCompose(IContainerOrchestrator):
     def create_image(self, image_name, image_tag):
         create_image(image_name, image_tag)
 
-    def execute_cmd_in_container(self, container_name, cmd):
+    def execute_cmd_in_nginx_container(self, container_name, cmd):
         dc = docker.from_env()
         nginx = dc.containers.get(container_name)
         try:
@@ -216,81 +208,271 @@ class DockerCompose(IContainerOrchestrator):
 
 
 class Kubernetes(IContainerOrchestrator):
+    """
+START
+minikube start
+cd /home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub
+kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete deployments -l app=slicer
+docker build -t opendx/tslicerh .
+minikube image load opendx/tslicerh
+docker build -t opendx/nginx ./proxy
+minikube image load opendx/nginx
+
+kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+
+DEBUGGING
+kubectl logs -f proxy-shub -c 3dslicer-hub
+kubectl exec -ti proxy-shub -c 3dslicer-hub -- bash
+kubectl get pods -l app=slicer -o wide
+
+URL OF THE SERVICE
+minikube service my-service --url
+
+kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete deployments -l app=slicer
+docker build -t opendx/tslicerh .
+minikube image load opendx/tslicerh
+kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+minikube service my-service --url
+kubectl logs -f proxy-shub -c 3dslicer-hub
+
+kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete deployments -l app=slicer
+kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+minikube service my-service --url
+kubectl logs -f proxy-shub -c 3dslicer-hub
+
+    """
     def __init__(self):
-        kubernetes.config.load_kube_config()
-        self.client = kubernetes.client.CoreV1Api()
+        self._port = 8080
+        self._app_label = "slicer"
+
+    def get_valid_name(self, name):
+        # Replace "_" by "-"
+        return name.replace("_", "-")
 
     @staticmethod
-    def _exec_kubectl(cmd):
-        # TODO If executed inside the K8s cluster, specify additional parameters
+    def _exec_kubectl(desc, cmd, output_type=None):
         # Execute cmd
-        cmd = ["kubectl"] + cmd + ["-o", "json"]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, capture_output=True, text=True)
+        if output_type is None:
+            output = []
+        elif output_type.lower() == "json":
+            output = ["-o", "json"]
+        elif output_type.lower() == "yaml":
+            output = ["-o", "json"]
+        elif output_type.lower() == "wide":
+            output = ["-o", "wide"]
+
+        # Build, execute, get output
+        cmd = ["kubectl"] + cmd + output
+        logger.debug(f"CMD {desc}: {' '.join(cmd)}")
+        proc = subprocess.run(cmd, capture_output=True, text=True)
         _ = proc.stdout
+        logger.debug(f"  OUTPUT: {_}\n")
+        logger.debug(f"  ERROR: {proc.stderr}\n----------------")
+
+        # Parse output
         try:
-            d = json.loads(_)
+            if output_type is None:
+                return _
+            elif output_type.lower() == "json":
+                return json.loads(_)
+            elif output_type.lower() == "yaml":
+                return yaml.load(_)
+            elif output_type.lower() == "wide":
+                # Parse string as a list of dictionaries
+                df = pd.read_table(StringIO(_), delimiter='\s\s+', engine="python")
+                return df.to_dict("records")
         except:
-            d = None
-        return d
+            return None
+
+    def _container_action(self, container_name, image_name, vol_dict, network_id, operation="apply"):
+        # Generate a manifest file, apply it, remove the manifest
+        _ = f"""
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-{container_name}
+  labels:
+    app: {self._app_label}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app-user: {container_name}
+  template:
+    metadata:
+      labels:
+        app: {self._app_label}
+        app-user: {container_name}
+    spec:
+      containers:
+      - name: {container_name}
+        image: {image_name}
+        ports:
+        - containerPort: {self._port}        
+        """
+        # Write string to a temporary file
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            logger.debug(f"Manifest file content:\n{_}\n----------------")
+            f.write(_)
+            f.close()
+            if operation == "apply":
+                desc = "Create Slicer, apply Deployment manifest"
+                cmd = ["apply", "-f", f.name]
+            elif operation == "delete":
+                desc = "Delete Slicer, delete Deployment manifest"
+                cmd = ["delete", "-f", f.name]
+            res = Kubernetes._exec_kubectl(desc, cmd)
+            os.remove(f.name)
+        return res
 
     def get_tdscontainers(self, prefix):
-        ["get", "po"]
-        # TODO query all pods, get only those starting with prefix
-        ret = self.client.list_pod_for_all_namespaces()
-        for i in ret.items:
-            print("%s\t%s\t%s" % (i.status.pod_ip, i.metadata.namespace, i.metadata.name))
+        """
+        Obtain 3d slicer instances, looking for Deployments (depends on the template launched with "_container_action")
+
+        :param prefix:
+        :return:
+        """
+        cmd = ["get", "deployments", "-l", f"app={self._app_label}"]
+        res = Kubernetes._exec_kubectl("Get Slicer containers", cmd, "wide")
+        _ = []
+        if res is not None:
+            for i in res:
+                deployment_name = i["NAME"]
+                _.append(deployment_name[len("deploy-"):])
+        return _
 
     def create_network(self):
         # TODO Create network for service pods if it does not already exist
         # TODO Manifest to create the network
-
-        cmd = ["apply", "-f", "network.yaml"]
-        self.__exec_kubectl(cmd)
+        # cmd = ["apply", "-f", "network.yaml"]
+        # self.__exec_kubectl(cmd)
+        pass
 
     def create_volume(self, name, type_):
+        # TODO Create an NFS volume and Volume Claim
         pass
 
     def remove_volume(self, volume_name):
-        pass
+        cmd = ["delete", "pvc", "--all", f"pvc-{volume_name}"]
+        res = Kubernetes._exec_kubectl("Remove vol (delete Claim)", cmd)
+        cmd = ["delete", "pv", "--all", volume_name]
+        res = Kubernetes._exec_kubectl("Remove vol (delete Vol)", cmd)
 
     def get_container_activity(self, container_name):
-        pass
+        # Check if the deployment exists
+        cmd = ["get", "deployment", f"deploy-{container_name}"]
+        res = Kubernetes._exec_kubectl("Get activity, check deployment exists", cmd, "wide")
+        if res is None:
+            return -1
+
+        # Obtain the CPU usage
+        cmd = ["top", "pod", "-l", f"app-user={container_name}"]  # -> CPU, MEMORY
+        res = Kubernetes._exec_kubectl("Get activity, get pod activity", cmd)
+        if res is None or len(res) == 0:
+            return -1
+        else:
+            _ = res[0]["CPU(cores)"]
+            print(f"CPU: {_}")
+            return _
 
     def get_container_ip(self, name_id, network_id):
-        pass
+        cmd = ["get", "pod", "-l", f"app-user={name_id}"]  # IP
+        res = Kubernetes._exec_kubectl("Get POD IP", cmd, "wide")
+        if res is None:
+            return None
+        _ = res[0]
+        if _["STATUS"] == "Running":
+            _ = _["IP"]
+        else:
+            logger.debug(f"Status: {_['STATUS']} not RUNNING")
+            _ = None
+        logger.debug(f"IP: {_}")
+        return _
 
     def get_container_port(self, name_id):
-        pass
+        # Always the same port
+        return self._port
 
     def get_container_status(self, container_name):
-        pass
-
-    def container_exists(self, container_name):
-        pass
-
-    def create_container(self, container_name, image_name):
-        pass
+        cmd = ["get", "pod", "-l", f"app-user={container_name}"]
+        res = Kubernetes._exec_kubectl("Get POD status", cmd, "wide")
+        if res is None:
+            return "DoesNotExist"
+        _ = res[0]["STATUS"]
+        print(f"Status: {_}")
+        return _
 
     async def start_container(self, container_name, image_name, image_tag,
-                              network_id, vol_dict, wait_until_running):
-        # kubectl run <container_name> --image=<image_name>:<image_tag> --restart=Never
+                              network_id=None, vol_dict=None, wait_until_running=True):
         # TODO How to indicate the network and the volumes?
+        logger.debug(f"Network id 2: {network_id}")
 
+        class Object(object):
+            pass
 
-
-        pass
+        c = Object()
+        c.id = container_name  # Set to value used by "get_container_ip" (and get_container_port) <<
+        c.name = container_name
+        c.logs = None
+        active = False
+        self._container_action(container_name, f"{image_name}:{image_tag}", vol_dict, network_id)
+        if wait_until_running:
+            while not active:
+                await asyncio.sleep(3)
+                c.status = self.get_container_status(container_name)
+                if c.status.lower() == "running":
+                    active = True
+                    logger.info("container running")
+                elif c.status.lower() == "exited":
+                    logger.info("container exited")
+                    break
+        return c
 
     def stop_container(self, container_name):
-        # kubectl to stop a kubernetes pod
-        # TODO Just check the pod exists, a remove container will follow
-        pass
+        # First check the deployment exists
+        cmd = ["get", "deployment", f"deploy-{container_name}"]
+        res = Kubernetes._exec_kubectl("Stop container, check dpl exists", cmd)
+        if res is None:
+            return
+        # Set the number of replicas to 0
+        cmd = ["scale", "--replicas=0", f"deployment/deploy-{container_name}"]
+        res = Kubernetes._exec_kubectl("Stop container, set RS replicas to 0", cmd)
+
+    def restart_container(self, container_name):
+        # First check the deployment exists
+        cmd = ["get", "deployment", f"deploy-{container_name}"]
+        res = Kubernetes._exec_kubectl("Restart container, check dpl exists", cmd)
+        if res is None:
+            return
+        # Set the number of replicas to 1
+        cmd = ["scale", "--replicas=1", f"deployment/deploy-{container_name}"]
+        res = Kubernetes._exec_kubectl("Restart container, set RS replicas to 1", cmd)
 
     def remove_container(self, container_name):
-        # kubectl delete pod <container_name>
+        cmd = ["delete", "deployment", f"deploy-{container_name}"]
+        res = Kubernetes._exec_kubectl("Remove deployment", cmd)
+
+    def pull_image(self, image_name, image_tag):
+        # TODO
+        #  For minikube, execute:
+        #  minikube image load <image_name>:<image_tag>
         pass
 
-    def create_image(self, image_name, image_tag):
-        pass
+    def execute_cmd_in_nginx_container(self, container_name, cmd):
+        # "container_name" is ignored, always "nginx-container"
+        _ = ["exec", "-ti", "proxy-shub", "-c", "nginx-container", "--"] + cmd
+        return Kubernetes._exec_kubectl("Exec command in NGINX container", _)
+
+    def start_base_containers(self):
+        """
+        NGINX and OpenLDAP; but may be others in the future
+        :return:
+        """
+        cmd = ["apply", "-f", "tdsh.yaml"]
+        return Kubernetes._exec_kubectl("Start base containers", cmd)
 
 
 def create_docker_network(network_name):
@@ -419,12 +601,12 @@ def containers_status(name_id):
 
 
 def container_stats(name_id=None):
-    client = docker.DockerClient(base_url='unix:///var/run/docker.sock')  # esto debería ser una variable de env
+    client = docker.DockerClient(base_url='unix:///var/run/docker.sock')
     if name_id:
         container = client.containers.get(name_id)
         stats = container.stats(decode=None, stream=False)
     else:
-        # todo throw list of cpus ussages
+        # todo throw list of cpus usages
         stats = []
         for containers in client.containers.list():
             stats.append(containers.stats(decode=None, stream=False))

@@ -1,0 +1,96 @@
+# BUILD AND LOAD CUSTOM IMAGES INTO MINIKUBE:
+# cd /home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub
+# docker build -t opendx/tslicerh .
+# cd proxy
+# docker build -t opendx/nginx .
+#
+#
+# STACKOVERFLOW: https://stackoverflow.com/questions/42564058/how-to-use-local-docker-images-with-minikube
+#
+# minikube image load opendx/tslicerh
+# minikube image load opendx/nginx
+#
+#
+# RBAC to allow 3dslicer hub execute "kubectl"
+# https://itnext.io/running-kubectl-commands-from-within-a-pod-b303e8176088
+#
+# BASH in a container, in the POD:
+# kubectl exec -ti proxy-shub -c 3dslicer-hub -- bash
+# kubectl exec -ti proxy-shub -c nginx-container -- bash
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: internal-kubectl
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: modify-pods
+rules:
+  - apiGroups: ["", "metrics.k8s.io"]
+    resources:
+      - pods
+    verbs:
+      - get
+      - create
+      - list
+      - delete
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: modify-pods-to-sa
+subjects:
+  - kind: ServiceAccount
+    name: internal-kubectl
+roleRef:
+  kind: Role
+  name: modify-pods
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: proxy-shub
+  labels:
+    app: shub
+    # Label used by get_container_ip. The value is defined in "env" with TDSLICERHUB_NAME variable
+    app-user: tdslicerhub-3dslicer-hub
+spec:
+  serviceAccountName: internal-kubectl
+  volumes:
+    - name: nginx-conf
+      emptyDir: {}
+  containers:
+    - name: nginx-container
+      image: opendx/nginx:latest
+      imagePullPolicy: Never
+      ports:
+      - containerPort: 80
+      volumeMounts:
+        - mountPath: /etc/nginx
+          name: nginx-conf
+    - name: 3dslicer-hub
+      image: opendx/tslicerh:latest
+      imagePullPolicy: Never
+      volumeMounts:
+        - mountPath: /app/proxy
+          name: nginx-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: shub
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 80
+  type: NodePort

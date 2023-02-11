@@ -1,6 +1,11 @@
 FROM python:3.10.7-slim-buster
 
 # docker build -t opendx/tslicerh .
+#
+# (if it complains with:
+#  error checking context: no permission to read from '/home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub/data/certificates/dhparam.pem'
+#  --> sudo chown -R rnebot data/
+# )
 
 # NORMAL
 RUN apt-get update && \
@@ -47,7 +52,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY supervisord.conf /etc/supervisord.conf
 CMD ["supervisord", "-c", "/etc/supervisord.conf"]
 
-EXPOSE 80
+EXPOSE 8080
 
 COPY tsliceh_local.env /app/.env
 COPY users /app/user

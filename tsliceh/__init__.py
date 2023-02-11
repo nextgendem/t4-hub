@@ -6,8 +6,6 @@ from sqlalchemy import Column, JSON, Boolean, String, DateTime, TypeDecorator, C
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 
-from tsliceh.orchestrators import get_container_ip, containers_status, IContainerOrchestrator, docker_compose_up
-
 
 class GUID(TypeDecorator):
     """Platform-independent GUID type.
@@ -85,8 +83,9 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
         declarative_base_.metadata.create_all()
 
 
-def get_ldap_adress(mode, openldap_name, net_id):
+def get_ldap_address(mode, openldap_name, net_id):
     if mode == "container":
+        from tsliceh.orchestrators import get_container_ip
         ldap_adress = get_container_ip(openldap_name, net_id) + ":389"
     else:
         ldap_adress = "localhost:389"
@@ -156,72 +155,3 @@ def get_domain_name(mode, domain_name, port=None):
 #         results = e
 
 
-def refresh_nginx(co: IContainerOrchestrator, sess, nginx_cfg_path, domainn, tds_address):
-    def generate_nginx_conf():
-        """ For each session, generate a section, plus the first part """
-        # TODO "nginx.conf" prefix
-        _ = f"""
-user www-data;
-
-events {{
-}}
-
-http {{
-  server {{
-    listen     80;
-    server_name  {domainn};
-
-    location / {{
-      proxy_pass http://{tds_address};
-    }}
-
-    """
-        if sess:
-            for s in sess.query(Session3DSlicer).all():
-                # TODO Section doing reverse proxy magic
-                _ += f"""
-
-    location /x11/{s.uuid}/ {{
-          proxy_pass http://{s.service_address}/x11/;
-        }}
-    
-    location /x11/{s.uuid}/websockify {{
-      proxy_pass http://{s.service_address}/x11/websockify;
-      proxy_http_version 1.1;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "Upgrade";
-      proxy_set_header Host $host;
-    }}        
-    """
-        _ += """
-    }
-}
-        """
-        print("::::::::::::::::::::::::::::CREATING NEW NGINX FILE:::::::::::::::::::::::::::::::::::::::::")
-        print(_)
-        if nginx_cfg_path:
-            with open(nginx_cfg_path, "wt") as f:
-                f.write(_)
-
-    def command_nginx_to_read_configuration():
-        """
-        Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
-        command it to reread the configuration.
-        """
-        nginx_container_name = os.getenv("NGINX_NAME")  # TODO Pass (inject) as parameter
-        tries = 0
-        while tries < 6:
-            status = co.get_container_status(nginx_container_name)
-            # TODO Needs better handling of statuses
-            if status == "running":
-                r = co.execute_cmd_in_container(nginx_container_name, "/etc/init.d/nginx reload")
-                if r is None:
-                    co.start_base_containers()
-                else:
-                    return r
-            tries += 1
-
-    # -----------------------------------------------
-
-    generate_nginx_conf()
-    command_nginx_to_read_configuration()
