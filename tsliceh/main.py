@@ -65,10 +65,10 @@ network_name = os.getenv('NETWORK_NAME')
 proto = os.getenv('PROTO')
 domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT', default=None))
 url_base = f"{proto}://{domain}"
-tdslicer_image_tag = "5.0.3"
-tdslicer_image_name = "stevepieper/slicer-chronicle"
 tdslicer_image_name = "opendx/slicer-chronicle5.0.3"
 tdslicer_image_tag = "latest"
+tdslicer_image_name = "stevepieper/slicer-chronicle"
+tdslicer_image_tag = "5.0.3"
 tdslicer_image_path = os.getenv("SLICER_IMAGE_DOCKERFILE")
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")

@@ -225,6 +225,7 @@ DEBUGGING
 kubectl logs -f proxy-shub -c 3dslicer-hub
 kubectl exec -ti proxy-shub -c 3dslicer-hub -- bash
 kubectl get pods -l app=slicer -o wide
+kubectl exec -ti proxy-shub -c nginx-container -- bash
 
 URL OF THE SERVICE
 minikube service my-service --url
@@ -374,6 +375,7 @@ spec:
         if res is None or len(res) == 0:
             return -1
         else:
+            logger.debug(f"-- Activity--: {res[0]}")
             _ = res[0]["CPU(cores)"]
             print(f"CPU: {_}")
             return _
@@ -455,7 +457,7 @@ spec:
         cmd = ["delete", "deployment", f"deploy-{container_name}"]
         res = Kubernetes._exec_kubectl("Remove deployment", cmd)
 
-    def pull_image(self, image_name, image_tag):
+    def create_image(self, image_name, image_tag):
         # TODO
         #  For minikube, execute:
         #  minikube image load <image_name>:<image_tag>
@@ -623,13 +625,12 @@ def create_image(image_name, image_tag):
             return
     if image_full_name.startswith("opendx"):
         from tsliceh.main import tdslicer_image_name, tdslicer_image_path
-        dc.images.build(path =tdslicer_image_path, tag = tdslicer_image_name )
+        dc.images.build(path=tdslicer_image_path, tag=tdslicer_image_name )
     else:
         try:
             dc.images.pull(image_name, tag=image_tag)
         except docker.errors.APIError as e:
             raise Exception(e)
-
 
 
 def docker_compose_up():
