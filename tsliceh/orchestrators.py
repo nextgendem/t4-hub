@@ -198,7 +198,7 @@ class DockerCompose(IContainerOrchestrator):
         dc = docker.from_env()
         nginx = dc.containers.get(container_name)
         try:
-            r = nginx.exec_run("/etc/init.d/nginx reload")
+            r = nginx.exec_run(cmd)
             return r
         except docker.errors.APIError as e:
             return None
@@ -465,7 +465,7 @@ spec:
 
     def execute_cmd_in_nginx_container(self, container_name, cmd):
         # "container_name" is ignored, always "nginx-container"
-        _ = ["exec", "-ti", "proxy-shub", "-c", "nginx-container", "--"] + cmd
+        _ = ["exec", "-ti", "proxy-shub", "-c", "nginx-container", "--"] + ["sh", "-c", cmd]
         return Kubernetes._exec_kubectl("Exec command in NGINX container", _)
 
     def start_base_containers(self):

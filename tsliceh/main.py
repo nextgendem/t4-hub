@@ -108,10 +108,10 @@ tdslicerhub_adress = get_container_internal_address(container_orchestrator, os.g
     if os.getenv("MODE") != "local" else domain
 
 
-def refresh_nginx(co: IContainerOrchestrator, sess, nginx_cfg_path, domainn, tds_address):
+async def refresh_nginx(co: IContainerOrchestrator, sess, nginx_cfg_path, domainn, tds_address):
     def generate_nginx_conf():
         """ For each session, generate a section, plus the first part """
-        # TODO "nginx.conf" prefix
+        # "nginx.conf" prefix
         _ = f"""
 user www-data;
 
@@ -155,31 +155,33 @@ http {{
             with open(nginx_cfg_path, "wt") as f:
                 f.write(_)
 
-    def command_nginx_to_read_configuration():
+    async def command_nginx_to_read_configuration(nginx_container_name):
         """
         Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
         command it to reread the configuration.
         """
-        nginx_container_name = os.getenv("NGINX_NAME")  # TODO Pass (inject) as parameter
         tries = 0
-        while tries < 6:
+        while tries < 10:
             status = co.get_container_status(nginx_container_name)
+            logger.debug(f"NGINX status: {status}\n----------------")
             # TODO Needs better handling of statuses
-            if status == "running":
+            if status.lower() == "running":
                 r = co.execute_cmd_in_nginx_container(nginx_container_name, "/etc/init.d/nginx reload")
                 if r is None:
                     co.start_base_containers()
                 else:
                     return r
+            else:
+                await asyncio.sleep(2)
             tries += 1
 
     # -----------------------------------------------
 
     generate_nginx_conf()
-    command_nginx_to_read_configuration()
+    await command_nginx_to_read_configuration(nginx_container_name)
 
 
-refresh_nginx(container_orchestrator, None, nginx_config_path, domain, tdslicerhub_adress)
+asyncio.run(refresh_nginx(container_orchestrator, None, nginx_config_path, domain, tdslicerhub_adress))
 max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
 slicer_ini = os.getenv("SLICER_INI")
 
@@ -260,7 +262,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                     session.add(s)
                     session.commit()
                     # Update nginx.conf and reread Nginx configuration
-                    refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+                    await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
                 else:
                     return HTMLResponse(content=f"""<!DOCTYPE html>
                                                     <html>
@@ -365,7 +367,7 @@ async def close_session_and_container(session_id):
         session.delete(s)
         session.commit()
         # Update nginx.conf and reread Nginx configuration
-        refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+        await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
         session.close()
         return RedirectResponse(url="/", status_code=302)
     else:
@@ -533,7 +535,7 @@ class BackgroundRunner:
         sess.commit()
         sess.close()
         # Update nginx.conf and reread Nginx configuration
-        refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
+        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
 
         # Remove dangling 3dslicer containers managed by 3dslicer-hub
         for name in tdslicer_containers:
@@ -553,7 +555,7 @@ class BackgroundRunner:
                     stop_remove_container(s.container_name)
                     sess.delete(s)
                     # Update nginx.conf and reread Nginx configuration
-                    refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
+                    await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
 
             sess.commit()
             sess.close()
