@@ -68,9 +68,17 @@ metadata:
     app-user: tdslicerhub-3dslicer-hub
 spec:
   serviceAccountName: internal-kubectl
+  restartPolicy: OnFailure
   volumes:
     - name: nginx-conf
       emptyDir: {}
+  initContainers:
+    - name: init-nginx-conf
+      image: busybox
+      command: [ "/bin/sh", "-c", "mkdir -p /etc/nginx/conf.d && echo events { } http { } > /etc/nginx/nginx.conf && cp /etc/nginx/nginx.conf /etc/nginx/conf.d/default.conf"]
+      volumeMounts:
+      - name: nginx-conf
+        mountPath: /etc/nginx
   containers:
     - name: nginx-container
       image: opendx/nginx:latest
