@@ -478,6 +478,20 @@ def stop_remove_container(name, force_remove=False):
             logger.info(f"container {name} : does not exist")
 
 
+@app.api_route("/{path_name:path}", methods=["GET"])
+def catch_all(path_name: str, request: Request):
+    logger.debug(f"Unknown path: {path_name}")
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+                                    <html>
+                                      <head>
+                                        <title>Unknown path</title>
+                                      </head>
+                                      <body>
+                                      <p>Path: {path_name} not supported</p>
+                                      </body>
+                                    </html>""", status_code=200)
+
+
 class BackgroundRunner:
     def __init__(self):
         self.session_maker = None
