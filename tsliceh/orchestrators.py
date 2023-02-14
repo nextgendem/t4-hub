@@ -386,6 +386,8 @@ spec:
             logger.debug(f"-- Activity--: {res[0]}")
             _ = res[0]["CPU(cores)"]
             print(f"CPU: {_}")
+            _ = (float(_[:-1]) / 1000) * 100
+            print(f"CPU %: {_}")
             return _
 
     def get_container_ip(self, name_id, network_id):
