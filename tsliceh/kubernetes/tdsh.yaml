@@ -91,6 +91,8 @@ spec:
     - name: 3dslicer-hub
       image: opendx/tslicerh:latest
       imagePullPolicy: Never
+      ports:
+      - containerPort: 8080
       volumeMounts:
         - mountPath: /app/proxy
           name: nginx-conf
@@ -104,6 +106,7 @@ spec:
     app: shub
   ports:
   - name: http
-    port: 8080
+    nodePort: 30080
+    port: 80
     targetPort: 80
   type: NodePort
