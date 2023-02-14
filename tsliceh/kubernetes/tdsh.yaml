@@ -31,6 +31,7 @@ rules:
   - apiGroups: ["", "metrics.k8s.io"]
     resources:
       - pods
+      - pods/exec
     verbs:
       - get
       - create
