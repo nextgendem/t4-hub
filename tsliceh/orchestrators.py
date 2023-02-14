@@ -226,6 +226,7 @@ kubectl logs -f proxy-shub -c 3dslicer-hub
 kubectl exec -ti proxy-shub -c 3dslicer-hub -- bash
 kubectl get pods -l app=slicer -o wide
 kubectl exec -ti proxy-shub -c nginx-container -- bash
+kubectl logs -f proxy-shub -c nginx-container
 
 URL OF THE SERVICE
 minikube service my-service --url
@@ -243,6 +244,15 @@ kubectl delete deployments -l app=slicer
 kubectl apply -f tsliceh/kubernetes/tdsh.yaml
 minikube service my-service --url
 kubectl logs -f proxy-shub -c 3dslicer-hub
+
+kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+kubectl logs -f proxy-shub -c nginx-container
+
+kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete deployments -l app=slicer
+kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+kubectl logs -f proxy-shub -c nginx-container
 
     """
     def __init__(self):
@@ -275,16 +285,14 @@ kubectl logs -f proxy-shub -c 3dslicer-hub
 
         # Parse output
         try:
-            if output_type is None:
-                return _
+            if output_type is None or output_type.lower() == "wide":
+                # Parse string as a list of dictionaries
+                df = pd.read_table(StringIO(_), delimiter='\s\s+', engine="python")
+                return df.to_dict("records")
             elif output_type.lower() == "json":
                 return json.loads(_)
             elif output_type.lower() == "yaml":
                 return yaml.load(_)
-            elif output_type.lower() == "wide":
-                # Parse string as a list of dictionaries
-                df = pd.read_table(StringIO(_), delimiter='\s\s+', engine="python")
-                return df.to_dict("records")
         except:
             return None
 
