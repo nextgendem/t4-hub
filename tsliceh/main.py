@@ -122,21 +122,23 @@ http {{
   server {{
     listen     80;
     server_name  {domainn};
+    access_log /var/log/nginx/access2.log;
+    error_log  /var/log/nginx/error2.log  debug;
 
     location / {{
       proxy_pass http://{tds_address};
     }}
-
     """
+        # Variable length section, for each location
         if sess:
             for s in sess.query(Session3DSlicer).all():
-                # TODO Section doing reverse proxy magic
+                # Section doing reverse proxy magic
                 _ += f"""
 
     location /x11/{s.uuid}/ {{
           proxy_pass http://{s.service_address}/x11/;
         }}
-    
+
     location /x11/{s.uuid}/websockify {{
       proxy_pass http://{s.service_address}/x11/websockify;
       proxy_http_version 1.1;
@@ -144,11 +146,12 @@ http {{
       proxy_set_header Connection "Upgrade";
       proxy_set_header Host $host;
     }}        
-    """
-        _ += """
-    }
-}
-        """
+
+"""
+        _ += f"""
+  }}
+}}
+                """
         print("::::::::::::::::::::::::::::CREATING NEW NGINX FILE:::::::::::::::::::::::::::::::::::::::::")
         print(_)
         if nginx_cfg_path:
