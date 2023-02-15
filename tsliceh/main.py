@@ -484,6 +484,7 @@ def stop_remove_container(name, force_remove=False):
 @app.api_route("/{path_name:path}", methods=["GET"])
 def catch_all(path_name: str, request: Request):
     logger.debug(f"Unknown path: {path_name}")
+    logger.debug(f"Request: {request.url}")
     return HTMLResponse(content=f"""<!DOCTYPE html>
                                     <html>
                                       <head>
