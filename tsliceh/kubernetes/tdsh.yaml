@@ -69,6 +69,9 @@ metadata:
     # Label used by get_container_ip. The value is defined in "env" with TDSLICERHUB_NAME variable
     app-user: tdslicerhub-3dslicer-hub
 spec:
+  # Force master-node (TEIDE HPC)
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: ""
   serviceAccountName: internal-kubectl
   restartPolicy: OnFailure
   volumes:
