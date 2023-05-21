@@ -27,7 +27,7 @@ from starlette.responses import RedirectResponse, HTMLResponse
 
 import ldap3
 from ldap3.core.exceptions import LDAPException
-from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, get_ldap_address, get_domain_name
+from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, get_ldap_address, \
     get_domain_name
 from tsliceh.orchestrators import create_docker_network, IContainerOrchestrator, container_orchestrator_factory
 from tsliceh.volumes import create_all_volumes, volume_dict
@@ -53,26 +53,31 @@ load_dotenv(env_file)
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
 
-engine = create_local_orm(os.getenv("DB_CONNECTION_STRING"))
-create_tables(engine)
-orm_session_maker = create_session_factory(engine)
-
-ACTIVITY_THRESHOLD = 10
-nginx_container_name = os.getenv('NGINX_NAME')  # TODO Read from environment variable the name of nginx container relative to this container
-nginx_config_path = os.getenv('NGINX_CONFIG_FILE')  # TODO Read from environment the location of nginx.conf relative to this container
-index_path = os.getenv('INDEX_PATH')
+# CONFIGURATION
+db_conn_str = os.getenv("DB_CONNECTION_STRING")
+ACTIVITY_THRESHOLD = 10  # Percentage of CPU usage to consider a container active
+nginx_container_name = os.getenv('NGINX_NAME')  # Read from environment variable the name of the nginx container relative to this container
+nginx_config_path = os.getenv('NGINX_CONFIG_FILE')  # Read from environment the location of nginx.conf for this container
+index_path = os.getenv('INDEX_PATH')  # Path for the automatic index.html file
 allowed_inactivity_time_in_seconds = int(os.getenv("INACTIVITY_TIME_SEC"))
 network_name = os.getenv('NETWORK_NAME')
 proto = os.getenv('PROTO')
-domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT', default=None))
-url_base = f"{proto}://{domain}"
+nfs_server = os.getenv('NFS_SERVER')  # Not used. Teide provides NFS mounts directly to all nodes
+ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
+co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")
 tdslicer_image_name = "opendx/slicer-chronicle5.0.3"
 tdslicer_image_tag = "latest"
 tdslicer_image_name = "stevepieper/slicer-chronicle"
 tdslicer_image_tag = "5.0.3"
 tdslicer_image_path = os.getenv("SLICER_IMAGE_DOCKERFILE")
-ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
-co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")
+# END CONFIGURATION
+
+domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT', default=None))
+url_base = f"{proto}://{domain}"
+engine = create_local_orm(db_conn_str)
+create_tables(engine)
+orm_session_maker = create_session_factory(engine)
+
 if co_str == "docker_compose":
     network_id = create_docker_network(network_name)
     ldap_address = get_ldap_address(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
@@ -156,18 +161,18 @@ http {{
             with open(nginx_cfg_path, "wt") as f:
                 f.write(_)
 
-    async def command_nginx_to_read_configuration(nginx_container_name):
+    async def command_nginx_to_read_configuration(nginx_cont_name):
         """
         Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
         command it to reread the configuration.
         """
         tries = 0
         while tries < 10:
-            status = co.get_container_status(nginx_container_name)
+            status = co.get_container_status(nginx_cont_name)
             logger.debug(f"NGINX status: {status}\n----------------")
             # TODO Needs better handling of statuses
             if status.lower() == "running":
-                r = co.execute_cmd_in_nginx_container(nginx_container_name, "/etc/init.d/nginx reload")
+                r = co.execute_cmd_in_nginx_container(nginx_cont_name, "/etc/init.d/nginx reload")
                 if r is None:
                     co.start_base_containers()
                 else:
