@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import textwrap
 from time import sleep
 from io import StringIO
 
@@ -297,6 +298,16 @@ kubectl logs -f proxy-shub -c nginx-container
             return None
 
     def _container_action(self, container_name, image_name, vol_dict, network_id, operation="apply"):
+        # Assume NODES have an NFS mount point with the same name in all nodes
+        b_dir = f"/mnt/opendx28/{container_name}/"
+        # "volumes"
+        _ = "\n".join([f"- name: vol-{container_name}-{i}\n  hostPath:\n    path: {b_dir}{i}" for i, (k, v) in enumerate(vol_dict.items())])
+        indentation = 8
+        container_vols = textwrap.indent(_, " " * indentation)
+        # "volumeMounts"
+        _ = "\n".join([f"- name: vol-{container_name}-{i}\n  mountPath: {v}" for i, (k, v) in enumerate(vol_dict.items())])
+        indentation = 10
+        container_vol_mounts = textwrap.indent(_, " " * indentation)
         # Generate a manifest file, apply it, remove the manifest
         _ = f"""
 apiVersion: apps/v1
@@ -319,8 +330,12 @@ spec:
       containers:
       - name: {container_name}
         image: {image_name}
+        volumeMounts:
+{container_vol_mounts}        
         ports:
-        - containerPort: {self._port}        
+        - containerPort: {self._port}
+      volumes:
+{container_vols}              
         """
         # Write string to a temporary file
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
