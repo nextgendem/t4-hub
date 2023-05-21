@@ -28,7 +28,8 @@ from starlette.responses import RedirectResponse, HTMLResponse
 import ldap3
 from ldap3.core.exceptions import LDAPException
 from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, get_ldap_address, get_domain_name
-from tsliceh.orchestrators import DockerCompose, Kubernetes, create_docker_network, IContainerOrchestrator
+    get_domain_name
+from tsliceh.orchestrators import create_docker_network, IContainerOrchestrator, container_orchestrator_factory
 from tsliceh.volumes import create_all_volumes, volume_dict
 from tsliceh.helpers import get_container_internal_address
 from fastapi.logger import logger
@@ -76,7 +77,6 @@ if co_str == "docker_compose":
     network_id = create_docker_network(network_name)
     ldap_address = get_ldap_address(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
     CONTAINER_NAME_PREFIX = "h__tds__"
-    container_orchestrator = DockerCompose()
 
     # setup loggers https://github.com/tiangolo/uvicorn-gunicorn-fastapi-docker/issues/19#issuecomment-606672830
     logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"), disable_existing_loggers=False)
@@ -99,11 +99,9 @@ elif co_str == "kubernetes":
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-
     logger.debug(f"===================\nLOGGER: {logger}\n=========================")
 
-    container_orchestrator = Kubernetes()
-
+container_orchestrator = container_orchestrator_factory(co_str)
 tdslicerhub_adress = get_container_internal_address(container_orchestrator, os.getenv("TDSLICERHUB_NAME"), network_id) \
     if os.getenv("MODE") != "local" else domain
 

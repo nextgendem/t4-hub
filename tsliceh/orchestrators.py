@@ -293,7 +293,7 @@ kubectl logs -f proxy-shub -c nginx-container
             elif output_type.lower() == "json":
                 return json.loads(_)
             elif output_type.lower() == "yaml":
-                return yaml.load(_)
+                return yaml.load(_, Loader=yaml.FullLoader)
         except:
             return None
 
@@ -665,3 +665,17 @@ def docker_compose_up():
         print(f"{container.name} : {status}")
         if status == "exited":
             raise APIError(500, f"Error running {container.name} : status : {status}")
+
+
+def container_orchestrator_factory(s) -> IContainerOrchestrator:
+    """
+    Factory method for container orchestrators
+    :param s: orchestrator name
+    :return: orchestrator object
+    """
+    if s.lower() in ("docker", "docker_compose"):
+        return DockerCompose()
+    elif s.lower() == "kubernetes":
+        return Kubernetes()
+    else:
+        raise Exception(f"Orchestrator {s} not implemented")
