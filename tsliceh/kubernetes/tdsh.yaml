@@ -94,8 +94,9 @@ spec:
         - mountPath: /etc/nginx
           name: nginx-conf
     - name: 3dslicer-hub
+      #image: rnebot/tslicerh:latest
       image: opendx/tslicerh:latest
-      imagePullPolicy: Never
+      imagePullPolicy: Always
       ports:
       - containerPort: 8080
       volumeMounts:
