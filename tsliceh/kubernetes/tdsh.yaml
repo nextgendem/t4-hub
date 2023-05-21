@@ -85,14 +85,6 @@ spec:
       - name: nginx-conf
         mountPath: /etc/nginx
   containers:
-    - name: nginx-container
-      image: opendx/nginx:latest
-      imagePullPolicy: Never
-      ports:
-      - containerPort: 80
-      volumeMounts:
-        - mountPath: /etc/nginx
-          name: nginx-conf
     - name: 3dslicer-hub
       #image: rnebot/tslicerh:latest
       image: opendx/tslicerh:latest
@@ -101,6 +93,15 @@ spec:
       - containerPort: 8080
       volumeMounts:
         - mountPath: /app/proxy
+          name: nginx-conf
+    - name: nginx-container
+      #image: opendx/nginx:latest
+      image: nginx:latest
+      imagePullPolicy: Always
+      ports:
+      - containerPort: 80
+      volumeMounts:
+        - mountPath: /etc/nginx
           name: nginx-conf
 ---
 apiVersion: v1
