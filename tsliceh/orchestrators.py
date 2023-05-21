@@ -490,7 +490,7 @@ spec:
 
     def execute_cmd_in_nginx_container(self, container_name, cmd):
         # "container_name" is ignored, always "nginx-container"
-        _ = ["exec", "-ti", "proxy-shub", "-c", "nginx-container", "--"] + ["sh", "-c", cmd]
+        _ = ["exec", "proxy-shub", "-c", "nginx-container", "--"] + ["sh", "-c", cmd]
         return Kubernetes._exec_kubectl("Exec command in NGINX container", _)
 
     def start_base_containers(self):
