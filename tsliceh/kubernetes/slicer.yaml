@@ -1,3 +1,5 @@
+# This deployment is not used directly
+# It is embedded in "orchestrators.py", Kubernetes (ContainerOrchestrator) class
 apiVersion: apps/v1
 kind: Deployment
 metadata:

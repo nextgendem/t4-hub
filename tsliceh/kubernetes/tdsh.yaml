@@ -1,8 +1,8 @@
 # BUILD AND LOAD CUSTOM IMAGES INTO MINIKUBE:
 # cd /home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub
 # docker build -t opendx/tslicerh .
-# cd proxy
-# docker build -t opendx/nginx .
+## cd proxy
+## docker build -t opendx/nginx .
 #
 #
 # STACKOVERFLOW: https://stackoverflow.com/questions/42564058/how-to-use-local-docker-images-with-minikube
@@ -58,6 +58,8 @@ roleRef:
   name: modify-pods
   apiGroup: rbac.authorization.k8s.io
 ---
+# POD with 3dslicer-hub and nginx to redirect to the different 3dslicer hub containers
+# - it initializes an empty nginx.conf file in a volumeMount (temporary fs to share files between containers of the POD)
 apiVersion: v1
 kind: Pod
 metadata:
@@ -110,3 +112,18 @@ spec:
     port: 80
     targetPort: 80
   type: NodePort
+#---
+#apiVersion: v1
+#kind: PersistentVolume
+#metadata:
+#  name: nfs-pv
+#spec:
+#  capacity:
+#    storage: 10Gi
+#  accessModes:
+#    - ReadWriteMany
+#  persistentVolumeReclaimPolicy: Retain
+#  nfs:
+#    # TODO Change to the path and host name (as seen by k8s master)
+#    path:
+#    server:

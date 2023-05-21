@@ -1,3 +1,4 @@
+# <It is not used>, for minikube, "minikube  image load opendx/tslicerh" is used to load the image
 apiVersion: apps/v1
 kind: Deployment
 metadata:
