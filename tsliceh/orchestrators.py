@@ -8,8 +8,10 @@ import docker
 from docker.errors import APIError
 from fastapi.logger import logger
 from python_on_whales import docker as docker_ow
-#import kubernetes
-#from kubernetes import client, config
+
+
+# import kubernetes
+# from kubernetes import client, config
 
 
 class IContainerOrchestrator(abc.ABC):
@@ -130,16 +132,19 @@ class DockerCompose(IContainerOrchestrator):
         pass
 
     async def start_container(self, container_name, image_name, image_tag,
-                        network_id, vol_dict,
-                        wait_until_running=True):  # "run" also
+                              network_id, vol_dict,
+                              wait_until_running=True):  # "run" also
         dc = docker.from_env()
         active = False
         c = dc.containers.run(image=f"{image_name}:{image_tag}",
-                              ports={"8080/tcp": None},
+                              environment={"VNC_DISABLE_AUTH":"true"},
+                              # ports={"6901/tcp": None},
                               name=container_name,
                               network=network_id,
                               volumes=vol_dict,
-                              detach=True)
+                              detach=True,
+                              user="root",
+                              shm_size="512m")
         container_id = c.id
         if wait_until_running:
             while not active:
@@ -275,8 +280,6 @@ class Kubernetes(IContainerOrchestrator):
                               network_id, vol_dict, wait_until_running):
         # kubectl run <container_name> --image=<image_name>:<image_tag> --restart=Never
         # TODO How to indicate the network and the volumes?
-
-
 
         pass
 
@@ -435,19 +438,22 @@ def create_image(image_name, image_tag):
     dc = docker.from_env()
     image_full_name = f"{image_name}:{image_tag}"
     images = dc.images.list()
-    for image in images:
-        if image_full_name in image.tags:
-            print(f"image {image} already in the system")
-            return
+    # make a flat list of al tags
+    tags = sum([image.tags for image in images], [])
+    if image_full_name in tags:
+        print(f"image {image_full_name} already in the system")
+        return
     if image_full_name.startswith("opendx"):
-        from tsliceh.main import tdslicer_image_name, tdslicer_image_path
-        dc.images.build(path =tdslicer_image_path, tag = tdslicer_image_name )
+        from tsliceh.main import base_vnc_image_url, tdslicer_image_name, tdslicer_image_url, base_vnc_image_name,base_vnc_image_tag
+        base_vnc_image_full_name = f"{base_vnc_image_name}:{base_vnc_image_tag}"
+        if base_vnc_image_full_name not in tags:
+            dc.images.build(path=base_vnc_image_url, tag=base_vnc_image_name)
+        dc.images.build(path=tdslicer_image_url, tag = tdslicer_image_name, buildargs = {"BASE_IMAGE":"vnc-base:latest"})
     else:
         try:
             dc.images.pull(image_name, tag=image_tag)
         except docker.errors.APIError as e:
             raise Exception(e)
-
 
 
 def docker_compose_up():

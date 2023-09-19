@@ -181,17 +181,9 @@ http {{
                 # TODO Section doing reverse proxy magic
                 _ += f"""
 
-    location /x11/{s.uuid}/ {{
-          proxy_pass http://{s.service_address}/x11/;
-        }}
-    
-    location /x11/{s.uuid}/websockify {{
-      proxy_pass http://{s.service_address}/x11/websockify;
-      proxy_http_version 1.1;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "Upgrade";
-      proxy_set_header Host $host;
-    }}        
+    location /{s.uuid} {{
+          proxy_pass http://{s.service_address};
+        }}      
     """
         _ += """
     }

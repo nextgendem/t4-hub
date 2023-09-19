@@ -79,9 +79,13 @@ network_id = create_docker_network(network_name)
 ldap_adress = get_ldap_adress(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
 # tdslicer_image_tag = "5.0.3"
 # tdslicer_image_name = "stevepieper/slicer-chronicle"
-tdslicer_image_name = "opendx/slicer-chronicle5.0.3"
+tdslicer_image_name = "opendx/slicer"
+base_vnc_image_name = "vnc-base"
+base_vnc_image_tag = "latest"
 tdslicer_image_tag = "latest"
 tdslicer_image_path = os.getenv("SLICER_IMAGE_DOCKERFILE")
+base_vnc_image_url= "https://github.com/OpenDx28/docker-vnc-base.git#:src"
+tdslicer_image_url = "https://github.com/OpenDx28/docker-slicer.git#:src"
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="docker_compose")
 if co_str == "docker_compose":
@@ -162,7 +166,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                     s.last_activity = datetime.datetime.now()
                     session.add(s)
                     session.flush()
-                    s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
+                    s.url_path = f"/{s.uuid}"
                     # Launch new 3d slicer container
                     await launch_3dslicer_web_container(s)
                     pct = container_orchestrator.get_container_activity(s.container_name)
