@@ -29,7 +29,7 @@
 </div>
 {% if not sess_shared %}
 <div class="flex p-4 m-6 justify-center">
-    <form class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" method="POST" action="{{ url_base }}/sessions/{{ sess_uuid }}/share?interactive=0">
+    <form class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" method="POST" action="/sessions/{{ sess_uuid }}/share?interactive=0">
         <div class="flex items-center justify-between">
             <button type="submit"
                     class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
@@ -37,7 +37,7 @@
             </button>
         </div>
     </form>
-    <form class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" method="POST" action="{{ url_base }}/sessions/{{ sess_uuid }}/share?interactive=1">
+    <form class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" method="POST" action="/sessions/{{ sess_uuid }}/share?interactive=1">
         <div class="flex items-center justify-between">
             <button type="submit"
                     class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
@@ -49,7 +49,7 @@
 {% endif %}
 {% if sess_shared %}
 <div class="flex p-4 m-6 justify-center">
-    <form class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" method="POST" action="{{ url_base }}/sessions/{{ sess_uuid }}/unshare">
+    <form class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" method="POST" action="/sessions/{{ sess_uuid }}/unshare">
         <div class="flex items-center justify-between">
             <button type="submit"
                     class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
