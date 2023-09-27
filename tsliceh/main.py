@@ -65,11 +65,12 @@ proto = os.getenv('PROTO')
 nfs_server = os.getenv('NFS_SERVER')  # Not used. Teide provides NFS mounts directly to all nodes
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")
-tdslicer_image_name = "opendx/slicer-chronicle5.0.3"
+tdslicer_image_name = "opendx/slicer"
 tdslicer_image_tag = "latest"
-tdslicer_image_name = "stevepieper/slicer-chronicle"
-tdslicer_image_tag = "5.0.3"
-tdslicer_image_path = os.getenv("SLICER_IMAGE_DOCKERFILE")
+tdslicer_image_url = os.getenv("SLICER_IMAGE_DOCKERFILE", "https://github.com/OpenDx28/docker-slicer.git#:src")
+base_vnc_image_name = "vnc-base"
+base_vnc_image_tag = "latest"
+base_vnc_image_url = os.getenv("VNC_BASE_IMAGE_DOCKERFILE", "https://github.com/OpenDx28/docker-vnc-base.git#:src")
 # END CONFIGURATION
 
 domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT', default=None))
@@ -138,24 +139,28 @@ http {{
                 # Section doing reverse proxy magic
                 _ += f"""
 
-    location /x11/{s.uuid}/ {{
-          proxy_pass http://{s.service_address}/x11/;
+    location /{s.uuid} {{
+          proxy_pass http://{s.service_address};
         }}
 
-    location /x11/{s.uuid}/websockify {{
-      proxy_pass http://{s.service_address}/x11/websockify;
-      proxy_http_version 1.1;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "Upgrade";
-      proxy_set_header Host $host;
-    }}        
+    # location /{s.uuid}/files {{
+    #       proxy_pass http://{s.service_address}:8085;
+    #     }}
+
+    # location /x11/{s.uuid}/websockify {{
+    #   proxy_pass http://{s.service_address}/x11/websockify;
+    #   proxy_http_version 1.1;
+    #   proxy_set_header Upgrade $http_upgrade;
+    #   proxy_set_header Connection "Upgrade";
+    #   proxy_set_header Host $host;
+    # }}        
 
 """
         _ += f"""
   }}
 }}
                 """
-        print("::::::::::::::::::::::::::::CREATING NEW NGINX FILE:::::::::::::::::::::::::::::::::::::::::")
+        print(":::::::::::::::::::::::::::: CREATING NEW NGINX FILE :::::::::::::::::::::::::::::::::::::::::")
         print(_)
         if nginx_cfg_path:
             with open(nginx_cfg_path, "wt") as f:
@@ -259,7 +264,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                     s.last_activity = datetime.datetime.now()
                     session.add(s)
                     session.flush()
-                    s.url_path = f"/x11/{s.uuid}/vnc.html?resize=scale&autoconnect=true&path=x11/{s.uuid}/websockify"
+                    s.url_path = f"/{s.uuid}"
                     # Launch new 3d slicer container
                     await launch_3dslicer_web_container(s)
                     pct = container_orchestrator.get_container_activity(s.container_name)
@@ -504,7 +509,7 @@ class BackgroundRunner:
         self.session_maker = None
 
     async def sessions_checker(self, sm):
-        async def check_session_activity():
+        async def check_session_activity(s):
             print(":::::::::::::::::::::::Checking Session Activity:::::::::::::::::::::::::::::::::::")
             pct = container_orchestrator.get_container_activity(s.container_name)
             logger.info(f"pct container: {s.container_name}: {pct} ")
@@ -569,7 +574,8 @@ class BackgroundRunner:
             sess = sm()
             # Loop all sessions, remove those that are not in use
             for s in sess.query(Session3DSlicer).all():
-                stop = await check_session_activity()  # Implicit parameter: "s" (3dslicer session)
+                print(f"Session - Name: {s.container_name};\n UUID: {s.uuid};\n User: {s.user}\n")
+                stop = await check_session_activity(s)  # Implicit parameter: "s" (3dslicer session)
                 sess.add(s)
                 if stop:
                     logger.info(f"::::::::::::::::: sessions_checker - inactivity cleanup - stopping container {s.container_name}")

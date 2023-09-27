@@ -123,16 +123,19 @@ class DockerCompose(IContainerOrchestrator):
         return container_stats(container_name)
 
     async def start_container(self, container_name, image_name, image_tag,
-                        network_id, vol_dict,
-                        wait_until_running=True):  # "run" also
+                              network_id, vol_dict,
+                              wait_until_running=True):  # "run" also
         dc = docker.from_env()
         active = False
         c = dc.containers.run(image=f"{image_name}:{image_tag}",
-                              ports={"8080/tcp": None},
+                              environment={"VNC_DISABLE_AUTH":"true"},
+                              # ports={"6901/tcp": None},
                               name=container_name,
                               network=network_id,
                               volumes=vol_dict,
-                              detach=True)
+                              detach=True,
+                              user="root",
+                              shm_size="512m")
         container_id = c.id
         if wait_until_running:
             while not active:
@@ -215,12 +218,19 @@ minikube start
 cd /home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub
 kubectl delete -f tsliceh/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
+eval $(minikube docker-env)
 docker build -t opendx/tslicerh .
-minikube image load opendx/tslicerh
-docker build -t opendx/nginx ./proxy
-minikube image load opendx/nginx
-
+eval $(docker-env -u)
 kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+
+DEPLOY / REDEPLOY
+kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete deployments -l app=slicer
+eval $(minikube docker-env)
+docker build -t opendx/tslicerh .
+eval $(docker-env -u)
+kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+kubectl logs -f proxy-shub
 
 DEBUGGING
 kubectl logs -f proxy-shub -c 3dslicer-hub
@@ -257,7 +267,7 @@ kubectl logs -f proxy-shub -c nginx-container
 
     """
     def __init__(self):
-        self._port = 8080
+        self._port = 8080  # Slicer Hub backend internal port
         self._app_label = "slicer"
 
     def get_valid_name(self, name):
@@ -298,16 +308,20 @@ kubectl logs -f proxy-shub -c nginx-container
             return None
 
     def _container_action(self, container_name, image_name, vol_dict, network_id, operation="apply"):
-        # Assume NODES have an NFS mount point with the same name in all nodes
-        b_dir = f"/mnt/opendx28/{container_name}/"
-        # "volumes"
-        _ = "\n".join([f"- name: vol-{container_name}-{i}\n  hostPath:\n    path: {b_dir}{i}" for i, (k, v) in enumerate(vol_dict.items())])
-        indentation = 8
-        container_vols = textwrap.indent(_, " " * indentation)
-        # "volumeMounts"
-        _ = "\n".join([f"- name: vol-{container_name}-{i}\n  mountPath: {v}" for i, (k, v) in enumerate(vol_dict.items())])
-        indentation = 10
-        container_vol_mounts = textwrap.indent(_, " " * indentation)
+        mount_type = "NFS"
+        mount_nfs_base = "/mnt/opendx28"
+        if mount_type == "NFS":
+            # Assume NODES have an NFS mount point with the same name in all nodes
+            b_dir = f"{mount_nfs_base}/{container_name}/"
+            # "volumes"
+            _ = "\n".join([f"- name: vol-{container_name}-{i}\n  hostPath:\n    path: {b_dir}{i}" for i, (k, v) in enumerate(vol_dict.items())])
+            indentation = 8
+            container_vols = textwrap.indent(_, " " * indentation)
+            # "volumeMounts"
+            _ = "\n".join([f"- name: vol-{container_name}-{i}\n  mountPath: \"{v['bind']}\"" for i, (k, v) in enumerate(vol_dict.items())])
+            indentation = 10
+            container_vol_mounts = textwrap.indent(_, " " * indentation)
+
         # Generate a manifest file, apply it, remove the manifest
         _ = f"""
 apiVersion: apps/v1
@@ -327,16 +341,29 @@ spec:
         app: {self._app_label}
         app-user: {container_name}
     spec:
+      volumes:
+{container_vols}              
       containers:
       - name: {container_name}
         image: {image_name}
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 0 # Run as root user
+        # resources:
+        #   limits:
+        #     nvidia.com/gpu: 1 # Allocate GPU
+        env:
+        - name: VNC_DISABLE_AUTH
+          value: "true"
+        ports:
+        - containerPort: 6901
+        - containerPort: 8085        
         volumeMounts:
 {container_vol_mounts}        
         ports:
         - containerPort: {self._port}
-      volumes:
-{container_vols}              
         """
+
         # Write string to a temporary file
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             logger.debug(f"Manifest file content:\n{_}\n----------------")
@@ -644,13 +671,17 @@ def create_image(image_name, image_tag):
     dc = docker.from_env()
     image_full_name = f"{image_name}:{image_tag}"
     images = dc.images.list()
-    for image in images:
-        if image_full_name in image.tags:
-            print(f"image {image} already in the system")
-            return
+    tags = sum([image.tags for image in images], [])
+    if image_full_name in tags:
+        print(f"image {image_full_name} already in the system")
+        return
     if image_full_name.startswith("opendx"):
-        from tsliceh.main import tdslicer_image_name, tdslicer_image_path
-        dc.images.build(path=tdslicer_image_path, tag=tdslicer_image_name )
+        from tsliceh.main import (tdslicer_image_name, tdslicer_image_url,
+                                  base_vnc_image_name, base_vnc_image_url,  base_vnc_image_tag)
+        base_vnc_image_full_name = f"{base_vnc_image_name}:{base_vnc_image_tag}"
+        if base_vnc_image_full_name not in tags:
+            dc.images.build(path=base_vnc_image_url, tag=base_vnc_image_name)
+        dc.images.build(path=tdslicer_image_url, tag=tdslicer_image_name, buildargs={"BASE_IMAGE": "vnc-base:latest"})
     else:
         try:
             dc.images.pull(image_name, tag=image_tag)

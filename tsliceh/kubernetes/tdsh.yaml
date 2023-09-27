@@ -4,9 +4,14 @@
 ## cd proxy
 ## docker build -t opendx/nginx .
 #
+# BASE and SLICER
+# docker build -t opendx/vnc-base https://github.com/OpenDx28/docker-vnc-base.git#:src
+# docker build -t opendx/slicer --build-arg BASE_IMAGE="opendx/vnc-base:latest" https://github.com/OpenDx28/docker-slicer.git#:src
 #
 # STACKOVERFLOW: https://stackoverflow.com/questions/42564058/how-to-use-local-docker-images-with-minikube
 #
+#
+# minikube image load opendx/slicer
 # minikube image load opendx/tslicerh
 # minikube image load opendx/nginx
 #
@@ -70,8 +75,8 @@ metadata:
     app-user: tdslicerhub-3dslicer-hub
 spec:
   # Force master-node (TEIDE HPC)
-  nodeSelector:
-    node-role.kubernetes.io/control-plane: ""
+  #nodeSelector:
+  #  node-role.kubernetes.io/control-plane: ""
   serviceAccountName: internal-kubectl
   restartPolicy: OnFailure
   volumes:
@@ -79,25 +84,26 @@ spec:
       emptyDir: {}
   initContainers:
     - name: init-nginx-conf
-      image: busybox
+      image: busybox:latest
+      imagePullPolicy: IfNotPresent
       command: [ "/bin/sh", "-c", "mkdir -p /etc/nginx/conf.d && echo events { } http { } > /etc/nginx/nginx.conf && cp /etc/nginx/nginx.conf /etc/nginx/conf.d/default.conf"]
       volumeMounts:
       - name: nginx-conf
         mountPath: /etc/nginx
   containers:
     - name: 3dslicer-hub
-      #image: rnebot/tslicerh:latest
       image: opendx/tslicerh:latest
-      imagePullPolicy: Always
+      # "IfNotPresent" for minikube
+      # "Always" for Teide HPC?
+      imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 8080
       volumeMounts:
         - mountPath: /app/proxy
           name: nginx-conf
     - name: nginx-container
-      #image: opendx/nginx:latest
       image: nginx:latest
-      imagePullPolicy: Always
+      imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 80
       volumeMounts:

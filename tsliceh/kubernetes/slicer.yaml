@@ -1,5 +1,5 @@
 # This deployment is not used directly
-# It is embedded in "orchestrators.py", Kubernetes (ContainerOrchestrator) class
+# It is embedded in "orchestrators.py", Kubernetes (ContainerOrchestrator) class, "_container_action" method
 apiVersion: apps/v1
 kind: Deployment
 metadata:
