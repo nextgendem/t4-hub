@@ -1,3 +1,5 @@
+import os
+
 from tsliceh.orchestrators import IContainerOrchestrator
 
 
@@ -29,7 +31,11 @@ def calculate_cpu_percent(d):
 
 def get_container_internal_address(co: IContainerOrchestrator, name_id, network_id):
     ip = co.get_container_ip(name_id, network_id)
-    port = co.get_container_port(name_id)
+    print(f"NAME: {name_id}")
+    if name_id and name_id == os.getenv("TDSLICERHUB_NAME", ""):
+        port = co.get_container_port(name_id)
+    else:
+        port = 6901
     return f"{ip}:{port}"
 
 
