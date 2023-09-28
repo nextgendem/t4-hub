@@ -123,10 +123,13 @@ events {{
 }}
 
 http {{
+  log_format custom '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$uri" "$http_x_forwarded_for" "$request_filename"';
   server {{
     listen     80;
     server_name  {domainn};
-    access_log /var/log/nginx/access2.log;
+    access_log /var/log/nginx/access2.log custom;
     error_log  /var/log/nginx/error2.log  debug;
 
     location / {{
@@ -138,28 +141,31 @@ http {{
             for s in sess.query(Session3DSlicer).all():
                 # Section doing reverse proxy magic
                 _ += f"""
+  
+    location /{s.uuid}/ {{
+        proxy_pass http://{s.service_address}/;          
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;           
+    }}
 
-    location /{s.uuid} {{
-          proxy_pass http://{s.service_address};
-        }}
+    location /websockify {{
+        proxy_pass http://{s.service_address}/websockify;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        add_header Cache-Control no-cache;
+    }}        
 
-    # location /{s.uuid}/files {{
-    #       proxy_pass http://{s.service_address}:8085;
-    #     }}
-
-    # location /x11/{s.uuid}/websockify {{
-    #   proxy_pass http://{s.service_address}/x11/websockify;
-    #   proxy_http_version 1.1;
-    #   proxy_set_header Upgrade $http_upgrade;
-    #   proxy_set_header Connection "Upgrade";
-    #   proxy_set_header Host $host;
-    # }}        
 
 """
         _ += f"""
   }}
 }}
-                """
+"""
         print(":::::::::::::::::::::::::::: CREATING NEW NGINX FILE :::::::::::::::::::::::::::::::::::::::::")
         print(_)
         if nginx_cfg_path:
@@ -264,7 +270,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                     s.last_activity = datetime.datetime.now()
                     session.add(s)
                     session.flush()
-                    s.url_path = f"/{s.uuid}"
+                    s.url_path = f"/{s.uuid}/"
                     # Launch new 3d slicer container
                     await launch_3dslicer_web_container(s)
                     pct = container_orchestrator.get_container_activity(s.container_name)

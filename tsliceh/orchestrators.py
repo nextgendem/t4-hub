@@ -355,13 +355,11 @@ spec:
         env:
         - name: VNC_DISABLE_AUTH
           value: "true"
-        ports:
-        - containerPort: 6901
-        - containerPort: 8085        
         volumeMounts:
 {container_vol_mounts}        
         ports:
-        - containerPort: {self._port}
+        - containerPort: 6901
+        - containerPort: 8085        
         """
 
         # Write string to a temporary file
