@@ -55,7 +55,7 @@ class IContainerOrchestrator(abc.ABC):
 
     @abc.abstractmethod
     async def start_container(self, container_name, image_name, image_tag,
-                              network_id, vol_dict, wait_until_running):  # "run" also
+                              network_id, vol_dict, uid, wait_until_running=None):  # "run" also
         pass
 
     @abc.abstractmethod
@@ -124,7 +124,7 @@ class DockerCompose(IContainerOrchestrator):
 
     async def start_container(self, container_name, image_name, image_tag,
                               network_id, vol_dict,
-                              wait_until_running=True):  # "run" also
+                              uid=None, wait_until_running=True):  # "run" also
         dc = docker.from_env()
         active = False
         c = dc.containers.run(image=f"{image_name}:{image_tag}",
@@ -307,7 +307,7 @@ kubectl logs -f proxy-shub -c nginx-container
         except:
             return None
 
-    def _container_action(self, container_name, image_name, vol_dict, network_id, operation="apply"):
+    def _container_action(self, container_name, image_name, vol_dict, network_id, uid, operation="apply"):
         mount_type = "NFS"
         mount_nfs_base = "/mnt/opendx28"
         if mount_type == "NFS":
@@ -347,6 +347,10 @@ spec:
       - name: {container_name}
         image: {image_name}
         imagePullPolicy: IfNotPresent
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/app/ui.js && sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/dist/main.bundle.js"]
         securityContext:
           runAsUser: 0 # Run as root user
         # resources:
@@ -458,7 +462,7 @@ spec:
         return _
 
     async def start_container(self, container_name, image_name, image_tag,
-                              network_id=None, vol_dict=None, wait_until_running=True):
+                              network_id=None, vol_dict=None, uid=None, wait_until_running=True):
         # TODO How to indicate the network and the volumes?
         logger.debug(f"Network id 2: {network_id}")
 
@@ -470,7 +474,7 @@ spec:
         c.name = container_name
         c.logs = None
         active = False
-        self._container_action(container_name, f"{image_name}:{image_tag}", vol_dict, network_id)
+        self._container_action(container_name, f"{image_name}:{image_tag}", vol_dict, network_id, uid)
         if wait_until_running:
             while not active:
                 await asyncio.sleep(3)

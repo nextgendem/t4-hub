@@ -150,7 +150,7 @@ http {{
         proxy_set_header X-Forwarded-Proto $scheme;           
     }}
 
-    location /websockify {{
+    location /{s.uuid}-ws {{
         proxy_pass http://{s.service_address}/websockify;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -466,7 +466,7 @@ async def launch_3dslicer_web_container(s: Session3DSlicer):
     create_all_volumes(container_orchestrator, s.user)
     vol_dict = volume_dict(s.user)
     c = await container_orchestrator.start_container(container_name, tdslicer_image_name, tdslicer_image_tag,
-                                                     network_id, vol_dict)
+                                                     network_id, vol_dict, s.uuid)
     logs = c.logs
     # todo error control
     s.service_address = get_container_internal_address(container_orchestrator, c.id, network_id)
