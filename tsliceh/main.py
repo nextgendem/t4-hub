@@ -13,10 +13,10 @@
 import asyncio
 import datetime
 import os
+import sys
 
 from dotenv import load_dotenv
 
-import docker
 from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
@@ -27,24 +27,16 @@ from starlette.responses import RedirectResponse, HTMLResponse
 
 import ldap3
 from ldap3.core.exceptions import LDAPException
-from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, refresh_nginx, \
-    get_ldap_adress, get_domain_name
-from tsliceh.orchestrators import DockerCompose, Kubernetes, create_docker_network
+from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, get_ldap_address, \
+    get_domain_name
+from tsliceh.orchestrators import create_docker_network, IContainerOrchestrator, container_orchestrator_factory
 from tsliceh.volumes import create_all_volumes, volume_dict
-from tsliceh.helpers import get_container_internal_adress
-import logging.config
+from tsliceh.helpers import get_container_internal_address
 from fastapi.logger import logger
+import logging.config
 import logging
 
 # INITIALIZE
-# setup loggers https://github.com/tiangolo/uvicorn-gunicorn-fastapi-docker/issues/19#issuecomment-606672830
-logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"), disable_existing_loggers=False)
-gunicorn_logger = logging.getLogger('gunicorn.error')
-logger.handlers = gunicorn_logger.handlers
-if __name__ != "main":
-    logger.setLevel(gunicorn_logger.level)
-else:
-    logger.setLevel(logging.DEBUG)
 
 app = FastAPI(root_path="")
 app.add_middleware(
@@ -61,40 +53,152 @@ load_dotenv(env_file)
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
 
-engine = create_local_orm(os.getenv("DB_CONNECTION_STRING"))
-create_tables(engine)
-orm_session_maker = create_session_factory(engine)
-
-CONTAINER_NAME_PREFIX = "h__tds__"
-ACTIVITY_THRESHOLD = 10
-nginx_container_name = os.getenv('NGINX_NAME')  # TODO Read from environment variable the name of nginx container relative to this container
-nginx_config_path = os.getenv('NGINX_CONFIG_FILE')  # TODO Read from environment the location of nginx.conf relative to this container
-index_path = os.getenv('INDEX_PATH')
+# CONFIGURATION
+db_conn_str = os.getenv("DB_CONNECTION_STRING")
+ACTIVITY_THRESHOLD = 10  # Percentage of CPU usage to consider a container active
+nginx_container_name = os.getenv('NGINX_NAME')  # Read from environment variable the name of the nginx container relative to this container
+nginx_config_path = os.getenv('NGINX_CONFIG_FILE')  # Read from environment the location of nginx.conf for this container
+index_path = os.getenv('INDEX_PATH')  # Path for the automatic index.html file
 allowed_inactivity_time_in_seconds = int(os.getenv("INACTIVITY_TIME_SEC"))
 network_name = os.getenv('NETWORK_NAME')
 proto = os.getenv('PROTO')
-domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT', default=None))
-url_base = f"{proto}://{domain}"
-network_id = create_docker_network(network_name)
-ldap_adress = get_ldap_adress(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
-# tdslicer_image_tag = "5.0.3"
-# tdslicer_image_name = "stevepieper/slicer-chronicle"
+nfs_server = os.getenv('NFS_SERVER')  # Not used. Teide provides NFS mounts directly to all nodes
+ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
+co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")
 tdslicer_image_name = "opendx/slicer"
+tdslicer_image_tag = "latest"
+tdslicer_image_url = os.getenv("SLICER_IMAGE_DOCKERFILE", "https://github.com/OpenDx28/docker-slicer.git#:src")
 base_vnc_image_name = "vnc-base"
 base_vnc_image_tag = "latest"
-tdslicer_image_tag = "latest"
-tdslicer_image_path = os.getenv("SLICER_IMAGE_DOCKERFILE")
-base_vnc_image_url= "https://github.com/OpenDx28/docker-vnc-base.git#:src"
-tdslicer_image_url = "https://github.com/OpenDx28/docker-slicer.git#:src"
-ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
-co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="docker_compose")
+base_vnc_image_url = os.getenv("VNC_BASE_IMAGE_DOCKERFILE", "https://github.com/OpenDx28/docker-vnc-base.git#:src")
+# END CONFIGURATION
+
+domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT', default=None))
+url_base = f"{proto}://{domain}"
+engine = create_local_orm(db_conn_str)
+create_tables(engine)
+orm_session_maker = create_session_factory(engine)
+
 if co_str == "docker_compose":
-    container_orchestrator = DockerCompose()
+    network_id = create_docker_network(network_name)
+    ldap_address = get_ldap_address(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
+    CONTAINER_NAME_PREFIX = "h__tds__"
+
+    # setup loggers https://github.com/tiangolo/uvicorn-gunicorn-fastapi-docker/issues/19#issuecomment-606672830
+    logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"), disable_existing_loggers=False)
+    gunicorn_logger = logging.getLogger('gunicorn.error')  # 1
+
+    logger.handlers = gunicorn_logger.handlers
+    if __name__ != "main":
+        logger.setLevel(gunicorn_logger.level)
+    else:
+        logger.setLevel(logging.DEBUG)  # 2
 elif co_str == "kubernetes":
-    container_orchestrator = Kubernetes()
-tdslicerhub_adress = get_container_internal_adress(container_orchestrator, os.getenv("TDSLICERHUB_NAME"), network_id) \
+    network_id = 0  # TODO Create network in kubernetes, obtain its id
+    ldap_address = "127.0.0.1:389"  # TODO Obtain ldap_adress from kubernetes
+    CONTAINER_NAME_PREFIX = "slicer-"
+
+    #logger = logging.getLogger(__name__)  # 1
+    logger.setLevel(logging.DEBUG)  # 2
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.debug(f"===================\nLOGGER: {logger}\n=========================")
+
+container_orchestrator = container_orchestrator_factory(co_str)
+tdslicerhub_adress = get_container_internal_address(container_orchestrator, os.getenv("TDSLICERHUB_NAME"), network_id) \
     if os.getenv("MODE") != "local" else domain
-refresh_nginx(container_orchestrator, None, nginx_config_path, domain, tdslicerhub_adress)
+
+
+async def refresh_nginx(co: IContainerOrchestrator, sess, nginx_cfg_path, domainn, tds_address):
+    def generate_nginx_conf():
+        """ For each session, generate a section, plus the first part """
+        # "nginx.conf" prefix
+        _ = f"""
+user www-data;
+
+events {{
+}}
+
+http {{
+  log_format custom '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$uri" "$http_x_forwarded_for" "$request_filename"';
+  server {{
+    listen     80;
+    server_name  {domainn};
+    access_log /var/log/nginx/access2.log custom;
+    error_log  /var/log/nginx/error2.log  debug;
+
+    location / {{
+      proxy_pass http://{tds_address};
+    }}
+    """
+        # Variable length section, for each location
+        if sess:
+            for s in sess.query(Session3DSlicer).all():
+                # Section doing reverse proxy magic
+                _ += f"""
+  
+    location /{s.uuid}/ {{
+        proxy_pass http://{s.service_address}/;          
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;           
+    }}
+
+    location /{s.uuid}-ws {{
+        proxy_pass http://{s.service_address}/websockify;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        add_header Cache-Control no-cache;
+    }}        
+
+
+"""
+        _ += f"""
+  }}
+}}
+"""
+        print(":::::::::::::::::::::::::::: CREATING NEW NGINX FILE :::::::::::::::::::::::::::::::::::::::::")
+        print(_)
+        if nginx_cfg_path:
+            with open(nginx_cfg_path, "wt") as f:
+                f.write(_)
+
+    async def command_nginx_to_read_configuration(nginx_cont_name):
+        """
+        Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
+        command it to reread the configuration.
+        """
+        tries = 0
+        while tries < 10:
+            status = co.get_container_status(nginx_cont_name)
+            logger.debug(f"NGINX status: {status}\n----------------")
+            # TODO Needs better handling of statuses
+            if status.lower() == "running":
+                r = co.execute_cmd_in_nginx_container(nginx_cont_name, "/etc/init.d/nginx reload")
+                if r is None:
+                    co.start_base_containers()
+                else:
+                    return r
+            else:
+                await asyncio.sleep(2)
+            tries += 1
+
+    # -----------------------------------------------
+
+    generate_nginx_conf()
+    await command_nginx_to_read_configuration(nginx_container_name)
+
+
+asyncio.run(refresh_nginx(container_orchestrator, None, nginx_config_path, domain, tdslicerhub_adress))
 max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
 slicer_ini = os.getenv("SLICER_INI")
 
@@ -131,7 +235,7 @@ async def welcome_and_login_page(request: Request):
 
 async def check_credentials(user, password):
     try:
-        with ldap3.Connection(ldap_adress, user=f"uid={user},{ldap_base}", password=password,
+        with ldap3.Connection(ldap_address, user=f"uid={user},{ldap_base}", password=password,
                               read_only=True) as conn:
             print(conn.result["description"])  # "success" if bind is ok
             return True
@@ -166,7 +270,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                     s.last_activity = datetime.datetime.now()
                     session.add(s)
                     session.flush()
-                    s.url_path = f"/{s.uuid}"
+                    s.url_path = f"/{s.uuid}/"
                     # Launch new 3d slicer container
                     await launch_3dslicer_web_container(s)
                     pct = container_orchestrator.get_container_activity(s.container_name)
@@ -175,7 +279,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                     session.add(s)
                     session.commit()
                     # Update nginx.conf and reread Nginx configuration
-                    refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+                    await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
                 else:
                     return HTMLResponse(content=f"""<!DOCTYPE html>
                                                     <html>
@@ -271,7 +375,7 @@ async def close_session_and_container(session_id):
     session = orm_session_maker()
     s = session.query(Session3DSlicer).get(session_id)
     if s:
-        container_name = CONTAINER_NAME_PREFIX + s.user
+        container_name = CONTAINER_NAME_PREFIX + container_orchestrator.get_valid_name(s.user)
         status = container_orchestrator.get_container_status(container_name)
         if status:
             stop_remove_container(container_name, True)
@@ -280,7 +384,7 @@ async def close_session_and_container(session_id):
         session.delete(s)
         session.commit()
         # Update nginx.conf and reread Nginx configuration
-        refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+        await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
         session.close()
         return RedirectResponse(url="/", status_code=302)
     else:
@@ -355,15 +459,17 @@ async def launch_3dslicer_web_container(s: Session3DSlicer):
     Launch a 3DSlicer web container
     """
     # just a container per user
-    container_name = CONTAINER_NAME_PREFIX + s.user
+    container_name = CONTAINER_NAME_PREFIX + container_orchestrator.get_valid_name(s.user)
+
     logger.info("CREATING NEW CONTAINER")
     container_orchestrator.create_image(tdslicer_image_name, tdslicer_image_tag)
     create_all_volumes(container_orchestrator, s.user)
     vol_dict = volume_dict(s.user)
-    c = await container_orchestrator.start_container(container_name, tdslicer_image_name, tdslicer_image_tag, network_id, vol_dict)
+    c = await container_orchestrator.start_container(container_name, tdslicer_image_name, tdslicer_image_tag,
+                                                     network_id, vol_dict, s.uuid)
     logs = c.logs
     # todo error control
-    s.service_address = get_container_internal_adress(container_orchestrator, c.id, network_id)
+    s.service_address = get_container_internal_address(container_orchestrator, c.id, network_id)
     s.container_name = container_name
     logger.info(f"container {c.name} : {c.status} in {s.service_address}")
 
@@ -389,12 +495,27 @@ def stop_remove_container(name, force_remove=False):
             logger.info(f"container {name} : does not exist")
 
 
+@app.api_route("/{path_name:path}", methods=["GET"])
+def catch_all(path_name: str, request: Request):
+    logger.debug(f"Unknown path: {path_name}")
+    logger.debug(f"Request: {request.url}")
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+                                    <html>
+                                      <head>
+                                        <title>Unknown path</title>
+                                      </head>
+                                      <body>
+                                      <p>Path: {path_name} not supported</p>
+                                      </body>
+                                    </html>""", status_code=200)
+
+
 class BackgroundRunner:
     def __init__(self):
         self.session_maker = None
 
     async def sessions_checker(self, sm):
-        async def check_session_activity():
+        async def check_session_activity(s):
             print(":::::::::::::::::::::::Checking Session Activity:::::::::::::::::::::::::::::::::::")
             pct = container_orchestrator.get_container_activity(s.container_name)
             logger.info(f"pct container: {s.container_name}: {pct} ")
@@ -446,7 +567,7 @@ class BackgroundRunner:
         sess.commit()
         sess.close()
         # Update nginx.conf and reread Nginx configuration
-        refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
+        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
 
         # Remove dangling 3dslicer containers managed by 3dslicer-hub
         for name in tdslicer_containers:
@@ -459,14 +580,15 @@ class BackgroundRunner:
             sess = sm()
             # Loop all sessions, remove those that are not in use
             for s in sess.query(Session3DSlicer).all():
-                stop = await check_session_activity()  # Implicit parameter: "s" (3dslicer session)
+                print(f"Session - Name: {s.container_name};\n UUID: {s.uuid};\n User: {s.user}\n")
+                stop = await check_session_activity(s)  # Implicit parameter: "s" (3dslicer session)
                 sess.add(s)
                 if stop:
                     logger.info(f"::::::::::::::::: sessions_checker - inactivity cleanup - stopping container {s.container_name}")
                     stop_remove_container(s.container_name)
                     sess.delete(s)
                     # Update nginx.conf and reread Nginx configuration
-                    refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
+                    await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
 
             sess.commit()
             sess.close()

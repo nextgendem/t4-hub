@@ -1,0 +1,25 @@
+# This deployment is not used directly
+# It is embedded in "orchestrators.py", Kubernetes (ContainerOrchestrator) class, "_container_action" method
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-slicer-user1
+  labels:
+    app: slicer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app-user: slicer-user1
+  template:
+    metadata:
+      labels:
+        app: slicer
+        app-user: slicer-user1
+    spec:
+      containers:
+      - name: slicer-user1
+        image: stevepieper/slicer-chronicle
+        ports:
+        - containerPort: 8080
+
