@@ -1,0 +1,140 @@
+# BUILD AND LOAD CUSTOM IMAGES INTO MINIKUBE:
+# cd /home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub
+# docker build -t opendx/tslicerh .
+## cd proxy
+## docker build -t opendx/nginx .
+#
+# BASE and SLICER
+# docker build -t opendx/vnc-base https://github.com/OpenDx28/docker-vnc-base.git#:src
+# docker build -t opendx/slicer --build-arg BASE_IMAGE="opendx/vnc-base:latest" https://github.com/OpenDx28/docker-slicer.git#:src
+#
+# STACKOVERFLOW: https://stackoverflow.com/questions/42564058/how-to-use-local-docker-images-with-minikube
+#
+#
+# minikube image load opendx/slicer
+# minikube image load opendx/tslicerh
+# minikube image load opendx/nginx
+#
+#
+# RBAC to allow 3dslicer hub execute "kubectl"
+# https://itnext.io/running-kubectl-commands-from-within-a-pod-b303e8176088
+#
+# BASH in a container, in the POD:
+# kubectl exec -ti proxy-shub -c 3dslicer-hub -- bash
+# kubectl exec -ti proxy-shub -c nginx-container -- bash
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: internal-kubectl
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: modify-pods
+rules:
+  - apiGroups: ["", "metrics.k8s.io"]
+    resources:
+      - pods
+      - pods/exec
+    verbs:
+      - get
+      - create
+      - list
+      - delete
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments/scale
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: modify-pods-to-sa
+subjects:
+  - kind: ServiceAccount
+    name: internal-kubectl
+roleRef:
+  kind: Role
+  name: modify-pods
+  apiGroup: rbac.authorization.k8s.io
+---
+# POD with 3dslicer-hub and nginx to redirect to the different 3dslicer hub containers
+# - it initializes an empty nginx.conf file in a volumeMount (temporary fs to share files between containers of the POD)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: proxy-shub
+  labels:
+    app: shub
+    # Label used by get_container_ip. The value is defined in "env" with TDSLICERHUB_NAME variable
+    app-user: tdslicerhub-3dslicer-hub
+spec:
+  # Force master-node (TEIDE HPC)
+  #nodeSelector:
+  #  node-role.kubernetes.io/control-plane: ""
+  serviceAccountName: internal-kubectl
+  restartPolicy: OnFailure
+  volumes:
+    - name: nginx-conf
+      emptyDir: {}
+  initContainers:
+    - name: init-nginx-conf
+      image: busybox:latest
+      imagePullPolicy: IfNotPresent
+      command: [ "/bin/sh", "-c", "mkdir -p /etc/nginx/conf.d && echo events { } http { } > /etc/nginx/nginx.conf && cp /etc/nginx/nginx.conf /etc/nginx/conf.d/default.conf"]
+      volumeMounts:
+      - name: nginx-conf
+        mountPath: /etc/nginx
+  containers:
+    - name: 3dslicer-hub
+      image: opendx/tslicerh:latest
+      # "IfNotPresent" for minikube
+      # "Always" for Teide HPC?
+      imagePullPolicy: IfNotPresent
+      ports:
+      - containerPort: 8080
+      volumeMounts:
+        - mountPath: /app/proxy
+          name: nginx-conf
+    - name: nginx-container
+      image: nginx:latest
+      imagePullPolicy: IfNotPresent
+      ports:
+      - containerPort: 80
+      volumeMounts:
+        - mountPath: /etc/nginx
+          name: nginx-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shub-svc
+spec:
+  selector:
+    app: shub
+  ports:
+  - name: http
+    nodePort: 30080
+    port: 80
+    targetPort: 80
+  type: NodePort
+#---
+#apiVersion: v1
+#kind: PersistentVolume
+#metadata:
+#  name: nfs-pv
+#spec:
+#  capacity:
+#    storage: 10Gi
+#  accessModes:
+#    - ReadWriteMany
+#  persistentVolumeReclaimPolicy: Retain
+#  nfs:
+#    # TODO Change to the path and host name (as seen by k8s master)
+#    path:
+#    server:
