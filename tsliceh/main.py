@@ -65,10 +65,10 @@ proto = os.getenv('PROTO')
 nfs_server = os.getenv('NFS_SERVER')  # Not used. Teide provides NFS mounts directly to all nodes
 ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
 co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")
-tdslicer_image_name = "opendx/slicer"
+tdslicer_image_name = "localhost:5000/opendx/slicer"
 tdslicer_image_tag = "latest"
 tdslicer_image_url = os.getenv("SLICER_IMAGE_DOCKERFILE", "https://github.com/OpenDx28/docker-slicer.git#:src")
-base_vnc_image_name = "vnc-base"
+base_vnc_image_name = "localhost:5000/vnc-base"
 base_vnc_image_tag = "latest"
 base_vnc_image_url = os.getenv("VNC_BASE_IMAGE_DOCKERFILE", "https://github.com/OpenDx28/docker-vnc-base.git#:src")
 # END CONFIGURATION
