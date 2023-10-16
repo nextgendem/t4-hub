@@ -95,7 +95,9 @@ if co_str == "docker_compose":
         logger.setLevel(logging.DEBUG)  # 2
 elif co_str == "kubernetes":
     network_id = 0  # TODO Create network in kubernetes, obtain its id
-    ldap_address = "127.0.0.1:389"  # TODO Obtain ldap_adress from kubernetes
+    ldap_host = os.getenv("OPENLDAP_NAME")
+    ldap_port = os.getenv("OPENLDAP_PORT")
+    ldap_address = f"{ldap_host}:{ldap_port}"  # TODO Obtain ldap_adress from kubernetes
     CONTAINER_NAME_PREFIX = "slicer-"
 
     #logger = logging.getLogger(__name__)  # 1
@@ -237,7 +239,7 @@ async def check_credentials(user, password):
     try:
         with ldap3.Connection(ldap_address, user=f"uid={user},{ldap_base}", password=password,
                               read_only=True) as conn:
-            print(conn.result["description"])  # "success" if bind is ok
+            logger.info(conn.result["description"])  # "success" if bind is ok
             return True
     except LDAPException as e:
         print(e)
