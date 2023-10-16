@@ -688,6 +688,7 @@ def create_image(image_name, image_tag):
         if base_vnc_image_full_name not in tags:
             dc.images.build(path=base_vnc_image_url, tag=base_vnc_image_name)
         dc.images.build(path=tdslicer_image_url, tag=tdslicer_image_name, buildargs={"BASE_IMAGE": "vnc-base:latest"})
+        # TODO PUSH TO localhost:5000 respository (seams that is not supported)
     else:
         try:
             dc.images.pull(image_name, tag=image_tag)

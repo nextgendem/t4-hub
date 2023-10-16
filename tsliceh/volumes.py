@@ -3,7 +3,7 @@ from tsliceh.orchestrators import IContainerOrchestrator
 vol_dict = {"cache_apt": "/var/cache/apt", # este tieme que ser borrado periodicamente? realmente lo necesito??
             # "tmpfiles": "/tmp", # todo parece que da problemas cuando le pongo ese volumen... quizás podría hacer que se destruya siembre
             "logs": "/var/log",
-            "Documents": "/home/researcher/Documents"}
+            "Documents": "/home/kasm-user/Documents"}
             # "/home/paula/Documentos/opendx28/3dslicerhub/researcher": "/home/resercher"}
 
 
