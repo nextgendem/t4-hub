@@ -102,6 +102,13 @@ spec:
         - mountPath: /app/proxy
           name: nginx-conf
     - name: nginx-container
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "250m"
+        limits:
+          memory: "128Mi"
+          cpu: "500m"
       image: nginx:latest
       imagePullPolicy: IfNotPresent
       ports:
@@ -138,3 +145,89 @@ spec:
 #    # TODO Change to the path and host name (as seen by k8s master)
 #    path:
 #    server:
+
+---
+
+# TODO: issues in here!!!!
+# ldap deplyment manifest
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ldap-deployment
+  labels:
+    app: ldap
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ldap
+  template:
+    metadata:
+      labels:
+        app: ldap
+    spec:
+      containers:
+        - name: ldap
+          image: osixia/openldap:stable
+          args: ["--copy-service", "--loglevel","debug"]
+          env:
+            - name: LDAP_ADMIN_PASSWORD
+              value: "admin_pass"
+            - name: LDAP_DOMAIN
+              value: "opendx.org"
+            - name: LDAP_ORGANISATION
+              value: "opendx"
+            - name: LDAP_TLS_VERIFY_CLIENT
+              value: "allow"
+          volumeMounts:
+            - name: ldap-data
+              mountPath: /var/lib/ldap
+            - name: ldap-config
+              mountPath: /etc/ldap/slapd.d
+            - name: ldap-certs
+              mountPath: /container/service/slapd/assets/certs
+            - name: container-run
+              mountPath: /container/run
+            - name: ldap-users
+              mountPath: /home/users
+          ports:
+            - containerPort: 389
+              name: openldap
+            - containerPort: 636
+              name: openldapssl
+      volumes:
+      - hostPath:
+          path: /home/paula/Documentos/opendx28/3dslicerhub/data/slapd/database
+          type: ""
+        name: ldap-data
+      - hostPath:
+          path: /home/paula/Documentos/opendx28/3dslicerhub/data/slapd/config
+          type: ""
+        name: ldap-config
+      - hostPath:
+          path: /home/paula/Documentos/opendx28/3dslicerhub/users
+          type: ""
+        name: ldap-users
+      - hostPath: # esto debería ser un secret
+          path: /home/paula/Documentos/opendx28/3dslicerhub/data/certificates
+          type: ""
+        name: ldap-certs
+      - name: container-run
+        emptyDir: {}
+
+
+
+---
+# ldap cluster
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: ldap-svc
+spec:
+  selector:
+    app: ldap
+  ports:
+    - protocol: TCP
+      port: 389
