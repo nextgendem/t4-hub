@@ -75,8 +75,7 @@ metadata:
     app-user: tdslicerhub-3dslicer-hub
 spec:
   # Force master-node (TEIDE HPC)
-  #nodeSelector:
-  #  node-role.kubernetes.io/control-plane: ""
+  nodeName: opendx2
   serviceAccountName: internal-kubectl
   restartPolicy: OnFailure
   volumes:
@@ -92,17 +91,7 @@ spec:
         mountPath: /etc/nginx
   containers:
     - name: 3dslicer-hub
-      # resources:
-      #   requests:
-      #     memory: "64Mi"
-      #     cpu: "250m"
-      #   limits:
-      #     memory: "128Mi"
-      #     cpu: "500m"
-      # image: opendx/tslicerh:latest
       image: localhost:5000/opendx28/tslicerh:latest
-      # "IfNotPresent" for minikube
-      # "Always" for Teide HPC?
       imagePullPolicy: Always
       ports:
       - containerPort: 8080
