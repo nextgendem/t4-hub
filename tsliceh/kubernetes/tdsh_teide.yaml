@@ -100,7 +100,7 @@ spec:
       #     memory: "128Mi"
       #     cpu: "500m"
       # image: opendx/tslicerh:latest
-      image: localhost:5000/opendx/tslicerh:latest
+      image: localhost:5000/opendx28/tslicerh:latest
       # "IfNotPresent" for minikube
       # "Always" for Teide HPC?
       imagePullPolicy: Always

@@ -224,9 +224,9 @@ cd /home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub
 kubectl delete -f tsliceh/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
-docker build -t localhost:5000/opendx/tslicerh . (like that the image will work with registry like in production)
+docker build -t localhost:5000/opendx28/tslicerh . (like that the image will work with registry like in production)
 docker run -d -p 5000:5000 --restart=always --name registry registry:2
-docker push localhost:5000/opendx/tslicerh 
+docker push localhost:5000/opendx28/tslicerh 
  eval $(minikube docker-env --unset)
 kubectl apply -f tsliceh/kubernetes/tdsh.yaml
 
@@ -234,7 +234,7 @@ DEPLOY / REDEPLOY
 kubectl delete -f tsliceh/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
-docker build -t opendx/tslicerh .
+docker build -t opendx28/tslicerh .
  eval $(minikube docker-env --unset)
 kubectl apply -f tsliceh/kubernetes/tdsh.yaml
 kubectl logs -f proxy-shub
@@ -316,8 +316,8 @@ kubectl logs -f proxy-shub -c nginx-container
 
     def _container_action(self, container_name, image_name, vol_dict, network_id, uid, use_gpu = False, operation="apply"):
         # assign cpu resource to pod or container https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/ 
-        cpu_limit = "1"
-        cpu_requested = "2"
+        cpu_limit = "4"
+        cpu_requested = "3"
         cpu_attemp_to_use = "3"
 
         mount_type = "NFS"
@@ -380,13 +380,13 @@ spec:
           runAsUser: 0 # Run as root user
         resources:
             limits:
-                cpu: {cpu_limit}
+                cpu: "{cpu_limit}"
 {nvidia_gpu}
             requests:
-                cpu: {cpu_requested}
+                cpu: "{cpu_requested}"
         args:
         - -cpus
-        - {cpu_attemp_to_use}
+        - "{cpu_attemp_to_use}"
         env:
         - name: VNC_DISABLE_AUTH
           value: "true"
