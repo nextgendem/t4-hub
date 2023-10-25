@@ -336,7 +336,7 @@ kubectl logs -f proxy-shub -c nginx-container
         if use_gpu:
             indent = " "*16
             nvidia_gpu = f"{indent}nvidia.com/gpu: 1"
-            indent = " "*8
+            indent = " "*6
             gpu_toleration = "\n".join([f"{indent}tolerations:", 
                             f"{indent}- key: nvidia.com/gpu", 
                             f"{indent}  operator: Exists",
