@@ -92,7 +92,7 @@ spec:
         mountPath: /etc/nginx
   containers:
     - name: 3dslicer-hub
-      image: localhost:5000/opendx/tslicerh:latest
+      image: localhost:5000/opendx28/tslicerh:latest
       # "IfNotPresent" for minikube
       # "Always" for Teide HPC?
       imagePullPolicy: Always
