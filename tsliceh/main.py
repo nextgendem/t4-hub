@@ -13,6 +13,7 @@
 import asyncio
 import datetime
 import os
+import re
 import sys
 
 from dotenv import load_dotenv
@@ -259,6 +260,10 @@ async def can_open_session(user):
 async def login(login_form: OAuth2PasswordRequestForm = Depends()):
     username = login_form.username
     password = login_form.password
+    if re.match(r".*_gpu$", login_form.username):
+        gpu = True
+    else:
+        gpu= False
     if await check_credentials(username, password):
         if await can_open_session(username):
             session = orm_session_maker()
@@ -270,6 +275,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                     s = Session3DSlicer()
                     s.user = username
                     s.last_activity = datetime.datetime.now()
+                    s.gpu = gpu
                     session.add(s)
                     session.flush()
                     s.url_path = f"/{s.uuid}/"
@@ -468,7 +474,7 @@ async def launch_3dslicer_web_container(s: Session3DSlicer):
     create_all_volumes(container_orchestrator, s.user)
     vol_dict = volume_dict(s.user)
     c = await container_orchestrator.start_container(container_name, tdslicer_image_name, tdslicer_image_tag,
-                                                     network_id, vol_dict, s.uuid)
+                                                     network_id, vol_dict, s.uuid, use_gpu = s.gpu)
     logs = c.logs
     # todo error control
     s.service_address = get_container_internal_address(container_orchestrator, c.id, network_id)

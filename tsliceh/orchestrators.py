@@ -2,6 +2,7 @@ import abc
 import asyncio
 import json
 import os
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -59,7 +60,7 @@ class IContainerOrchestrator(abc.ABC):
 
     @abc.abstractmethod
     async def start_container(self, container_name, image_name, image_tag,
-                              network_id, vol_dict, uid, wait_until_running=None):  # "run" also
+                              network_id, vol_dict, uid, wait_until_running=None, use_gpu = False):  # "run" also
         pass
 
     @abc.abstractmethod
@@ -128,7 +129,7 @@ class DockerCompose(IContainerOrchestrator):
 
     async def start_container(self, container_name, image_name, image_tag,
                               network_id, vol_dict,
-                              uid=None, wait_until_running=True):  # "run" also
+                              uid=None, wait_until_running=True, use_gpu = False):  # "run" also
         dc = docker.from_env()
         active = False
         c = dc.containers.run(image=f"{image_name}:{image_tag}",
@@ -223,8 +224,10 @@ cd /home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub
 kubectl delete -f tsliceh/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
-docker build -t opendx/tslicerh .
-eval $(docker-env -u)
+docker build -t localhost:5000/opendx/tslicerh . (like that the image will work with registry like in production)
+docker run -d -p 5000:5000 --restart=always --name registry registry:2
+docker push localhost:5000/opendx/tslicerh 
+ eval $(minikube docker-env --unset)
 kubectl apply -f tsliceh/kubernetes/tdsh.yaml
 
 DEPLOY / REDEPLOY
@@ -232,7 +235,7 @@ kubectl delete -f tsliceh/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
 docker build -t opendx/tslicerh .
-eval $(docker-env -u)
+ eval $(minikube docker-env --unset)
 kubectl apply -f tsliceh/kubernetes/tdsh.yaml
 kubectl logs -f proxy-shub
 
@@ -311,7 +314,12 @@ kubectl logs -f proxy-shub -c nginx-container
         except:
             return None
 
-    def _container_action(self, container_name, image_name, vol_dict, network_id, uid, operation="apply"):
+    def _container_action(self, container_name, image_name, vol_dict, network_id, uid, use_gpu = False, operation="apply"):
+        # assign cpu resource to pod or container https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/ 
+        cpu_limit = "1"
+        cpu_requested = "2"
+        cpu_attemp_to_use = "3"
+
         mount_type = "NFS"
         mount_nfs_base = "/mnt/opendx28"
         if mount_type == "NFS":
@@ -325,6 +333,19 @@ kubectl logs -f proxy-shub -c nginx-container
             _ = "\n".join([f"- name: vol-{container_name}-{i}\n  mountPath: \"{v['bind']}\"" for i, (k, v) in enumerate(vol_dict.items())])
             indentation = 10
             container_vol_mounts = textwrap.indent(_, " " * indentation)
+        if use_gpu:
+            indent = " "*16
+            nvidia_gpu = f"{indent}nvidia.com/gpu: 1"
+            indent = " "*8
+            gpu_toleration = "\n".join([f"{indent}tolerations:", 
+                            f"{indent}- key: nvidia.com/gpu", 
+                            f"{indent}  operator: Exists",
+                            f"{indent}  effect: NoSchedule"])
+        else:
+            nvidia_gpu =""
+            gpu_toleration=""
+                                    
+            
 
         # Generate a manifest file, apply it, remove the manifest
         _ = f"""
@@ -350,16 +371,22 @@ spec:
       containers:
       - name: {container_name}
         image: {image_name}
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         lifecycle:
           postStart:
             exec:
               command: ["/bin/sh", "-c", "sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/app/ui.js && sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/dist/main.bundle.js"]
         securityContext:
           runAsUser: 0 # Run as root user
-        # resources:
-        #   limits:
-        #     nvidia.com/gpu: 1 # Allocate GPU
+        resources:
+            limits:
+                cpu: {cpu_limit}
+{nvidia_gpu}
+            requests:
+                cpu: {cpu_requested}
+        args:
+        - -cpus
+        - {cpu_attemp_to_use}
         env:
         - name: VNC_DISABLE_AUTH
           value: "true"
@@ -367,7 +394,9 @@ spec:
 {container_vol_mounts}        
         ports:
         - containerPort: 6901
-        - containerPort: 8085        
+        - containerPort: 8085
+{gpu_toleration}
+                
         """
 
         # Write string to a temporary file
@@ -466,7 +495,7 @@ spec:
         return _
 
     async def start_container(self, container_name, image_name, image_tag,
-                              network_id=None, vol_dict=None, uid=None, wait_until_running=True):
+                              network_id=None, vol_dict=None, uid=None, wait_until_running=True, use_gpu = False):
         # TODO How to indicate the network and the volumes?
         logger.debug(f"Network id 2: {network_id}")
 
@@ -478,7 +507,7 @@ spec:
         c.name = container_name
         c.logs = None
         active = False
-        self._container_action(container_name, f"{image_name}:{image_tag}", vol_dict, network_id, uid)
+        self._container_action(container_name, f"{image_name}:{image_tag}", vol_dict, network_id, uid, use_gpu =use_gpu)
         if wait_until_running:
             while not active:
                 await asyncio.sleep(3)

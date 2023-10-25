@@ -59,6 +59,7 @@ class Session3DSlicer(SQLAlchemyBase):
     service_address = Column(String(1024), nullable=True)
     container_name = Column(String(128), nullable=True)
     restart = Column(Boolean, nullable=False, default=False)
+    gpu = Column(Boolean, nullable=False, default=False)
     info = Column(JSON)
 
 
