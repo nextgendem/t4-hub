@@ -24,6 +24,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy import exc
 from starlette.responses import RedirectResponse, HTMLResponse
 
 import ldap3
@@ -267,39 +268,47 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
     if await check_credentials(username, password):
         if await can_open_session(username):
             session = orm_session_maker()
-            s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
-            if not s:
-                # Create new session (IF there is room)
-                cont = count_active_session_containers(session)
-                if cont < max_sessions:
-                    s = Session3DSlicer()
-                    s.user = username
-                    s.last_activity = datetime.datetime.now()
-                    s.gpu = gpu
-                    session.add(s)
-                    session.flush()
-                    s.url_path = f"/{s.uuid}/"
-                    # Launch new 3d slicer container
-                    await launch_3dslicer_web_container(s)
-                    pct = container_orchestrator.get_container_activity(s.container_name)
-                    s.info = {'CPU_pct': pct, 'shared': False}
-                    # Commit new
-                    session.add(s)
-                    session.commit()
-                    # Update nginx.conf and reread Nginx configuration
-                    await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
-                else:
-                    return HTMLResponse(content=f"""<!DOCTYPE html>
-                                                    <html>
-                                                      <head>
-                                                        <title>Max number of sessions reached</title>
-                                                      </head>
-                                                      <body>
-                                                      <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
-                                                      </body>
-                                                    </html>""", status_code=401)
-
-            session.close()
+            s = Session3DSlicer()
+            container_launched = False
+            try:
+                s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
+                if not s:
+                    # Create new session (IF there is room)
+                    cont = count_active_session_containers(session)
+                    if cont < max_sessions:
+                        s.user = username
+                        s.last_activity = datetime.datetime.now()
+                        s.gpu = gpu
+                        session.add(s)
+                        session.flush()
+                        s.url_path = f"/{s.uuid}/"
+                        # Launch new 3d slicer container (it also sets the "container_name" field)
+                        await launch_3dslicer_web_container(s)
+                        container_launched = True
+                        pct = container_orchestrator.get_container_activity(s.container_name)
+                        s.info = {'CPU_pct': pct, 'shared': False}
+                        # Commit new
+                        session.add(s)
+                        session.commit()
+                        # Update nginx.conf and reread Nginx configuration
+                        await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+                    else:
+                        return HTMLResponse(content=f"""<!DOCTYPE html>
+                                                        <html>
+                                                          <head>
+                                                            <title>Max number of sessions reached</title>
+                                                          </head>
+                                                          <body>
+                                                          <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
+                                                          </body>
+                                                        </html>""", status_code=401)
+            except exc.SQLAlchemyError as e:
+                if container_launched:
+                    stop_remove_container(s.container_name)
+                session.rollback()
+                raise e
+            finally:
+                session.close()
 
             # Redirect to a session management page:
             return RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
@@ -494,7 +503,7 @@ def stop_remove_container(name, force_remove=False):
     # TODO MANAGE THOSE PRINTS
     stopped = container_orchestrator.stop_container(name)
     if stopped is True:
-        removed = container_orchestrator.remove_container(name, force_remove)
+        removed = container_orchestrator.remove_container(name)
         if removed:
             logger.info(f"container {name} : removed")
         elif removed is False:
