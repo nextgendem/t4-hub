@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import exc
 from starlette.responses import RedirectResponse, HTMLResponse
+from multiprocessing import Lock
 
 import ldap3
 from ldap3.core.exceptions import LDAPException
@@ -80,6 +81,7 @@ url_base = f"{proto}://{domain}"
 engine = create_local_orm(db_conn_str)
 create_tables(engine)
 orm_session_maker = create_session_factory(engine)
+db_access_lock = Lock()
 
 if co_str == "docker_compose":
     network_id = create_docker_network(network_name)
@@ -220,9 +222,10 @@ def count_active_session_containers(sess):
 # Welcome & login page
 @app.get("/index.html")
 async def index_page():
-    session = orm_session_maker()
-    return HTMLResponse(content=refresh_index_html(session, proto=proto, admin=False, write_to_file=False),
-                        status_code=200)
+    with db_access_lock:
+        session = orm_session_maker()
+        return HTMLResponse(content=refresh_index_html(session, proto=proto, admin=False, write_to_file=False),
+                            status_code=200)
 
 
 @app.get("/")
@@ -267,48 +270,49 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
         gpu= False
     if await check_credentials(username, password):
         if await can_open_session(username):
-            session = orm_session_maker()
-            s = Session3DSlicer()
-            container_launched = False
-            try:
-                s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
-                if not s:
-                    # Create new session (IF there is room)
-                    cont = count_active_session_containers(session)
-                    if cont < max_sessions:
-                        s.user = username
-                        s.last_activity = datetime.datetime.now()
-                        s.gpu = gpu
-                        session.add(s)
-                        session.flush()
-                        s.url_path = f"/{s.uuid}/"
-                        # Launch new 3d slicer container (it also sets the "container_name" field)
-                        await launch_3dslicer_web_container(s)
-                        container_launched = True
-                        pct = container_orchestrator.get_container_activity(s.container_name)
-                        s.info = {'CPU_pct': pct, 'shared': False}
-                        # Commit new
-                        session.add(s)
-                        session.commit()
-                        # Update nginx.conf and reread Nginx configuration
-                        await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
-                    else:
-                        return HTMLResponse(content=f"""<!DOCTYPE html>
-                                                        <html>
-                                                          <head>
-                                                            <title>Max number of sessions reached</title>
-                                                          </head>
-                                                          <body>
-                                                          <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
-                                                          </body>
-                                                        </html>""", status_code=401)
-            except exc.SQLAlchemyError as e:
-                if container_launched:
-                    stop_remove_container(s.container_name)
-                session.rollback()
-                raise e
-            finally:
-                session.close()
+            with db_access_lock:
+                session = orm_session_maker()
+                s = Session3DSlicer()
+                container_launched = False
+                try:
+                    s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
+                    if not s:
+                        # Create new session (IF there is room)
+                        cont = count_active_session_containers(session)
+                        if cont < max_sessions:
+                            s.user = username
+                            s.last_activity = datetime.datetime.now()
+                            s.gpu = gpu
+                            session.add(s)
+                            session.flush()
+                            s.url_path = f"/{s.uuid}/"
+                            # Launch new 3d slicer container (it also sets the "container_name" field)
+                            await launch_3dslicer_web_container(s)
+                            container_launched = True
+                            pct = container_orchestrator.get_container_activity(s.container_name)
+                            s.info = {'CPU_pct': pct, 'shared': False}
+                            # Commit new
+                            session.add(s)
+                            session.commit()
+                            # Update nginx.conf and reread Nginx configuration
+                            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+                        else:
+                            return HTMLResponse(content=f"""<!DOCTYPE html>
+                                                            <html>
+                                                              <head>
+                                                                <title>Max number of sessions reached</title>
+                                                              </head>
+                                                              <body>
+                                                              <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
+                                                              </body>
+                                                            </html>""", status_code=401)
+                except exc.SQLAlchemyError as e:
+                    if container_launched:
+                        stop_remove_container(s.container_name)
+                    session.rollback()
+                    raise e
+                finally:
+                    session.close()
 
             # Redirect to a session management page:
             return RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
@@ -340,73 +344,76 @@ async def get_session_management_page(request: Request, session_id: str):
 
 @app.post("/sessions/{session_id}/share")
 async def share_session(request: Request, session_id: str, interactive: int = 0):
-    session = orm_session_maker()
-    s = session.query(Session3DSlicer).get(session_id)
-    if s:
-        s.info["shared"] = True
-        s.info["shared_interactive"] = interactive
-        flag_modified(s, "info")
-        session.add(s)
-        session.commit()
-        session.close()
-        return RedirectResponse(url=f"/sessions/{session_id}", status_code=302)
-    else:
-        session.close()
-        return HTMLResponse(content="""<!DOCTYPE html>
-                                        <html>
-                                          <head>
-                                            <title>Share Session Failed</title>
-                                          </head>
-                                          <body>
-                                          <p>Share Session Failed: Session does not exist</p>
-                                          </body>
-                                        </html>""", status_code=404)
+    with db_access_lock:
+        session = orm_session_maker()
+        s = session.query(Session3DSlicer).get(session_id)
+        if s:
+            s.info["shared"] = True
+            s.info["shared_interactive"] = interactive
+            flag_modified(s, "info")
+            session.add(s)
+            session.commit()
+            session.close()
+            return RedirectResponse(url=f"/sessions/{session_id}", status_code=302)
+        else:
+            session.close()
+            return HTMLResponse(content="""<!DOCTYPE html>
+                                            <html>
+                                              <head>
+                                                <title>Share Session Failed</title>
+                                              </head>
+                                              <body>
+                                              <p>Share Session Failed: Session does not exist</p>
+                                              </body>
+                                            </html>""", status_code=404)
 
 
 @app.post("/sessions/{session_id}/unshare")
 async def unshare_session(request: Request, session_id: str):
-    session = orm_session_maker()
-    s = session.query(Session3DSlicer).get(session_id)
-    if s:
-        s.info["shared"] = False
-        flag_modified(s, "info")
-        session.add(s)
-        session.commit()
-        session.close()
-        return RedirectResponse(url=f"/sessions/{session_id}", status_code=302)
-    else:
-        session.close()
-        return HTMLResponse(content="""<!DOCTYPE html>
-                                        <html>
-                                          <head>
-                                            <title>Unshare Session Failed</title>
-                                          </head>
-                                          <body>
-                                          <p>Unshare Session Failed: Session does not exist</p>
-                                          </body>
-                                        </html>""", status_code=404)
+    with db_access_lock:
+        session = orm_session_maker()
+        s = session.query(Session3DSlicer).get(session_id)
+        if s:
+            s.info["shared"] = False
+            flag_modified(s, "info")
+            session.add(s)
+            session.commit()
+            session.close()
+            return RedirectResponse(url=f"/sessions/{session_id}", status_code=302)
+        else:
+            session.close()
+            return HTMLResponse(content="""<!DOCTYPE html>
+                                            <html>
+                                              <head>
+                                                <title>Unshare Session Failed</title>
+                                              </head>
+                                              <body>
+                                              <p>Unshare Session Failed: Session does not exist</p>
+                                              </body>
+                                            </html>""", status_code=404)
 
 
 @app.post("/sessions/{session_id}/close")
 async def close_session_and_container(session_id):
-    session = orm_session_maker()
-    s = session.query(Session3DSlicer).get(session_id)
-    if s:
-        container_name = CONTAINER_NAME_PREFIX + container_orchestrator.get_valid_name(s.user)
-        status = container_orchestrator.get_container_status(container_name)
-        if status:
-            stop_remove_container(container_name, True)
-            logger.info(f"container {container_name} deleted")
-        logger.info(f"deleting session {s.uuid}")
-        session.delete(s)
-        session.commit()
-        # Update nginx.conf and reread Nginx configuration
-        await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
-        session.close()
-        return RedirectResponse(url="/", status_code=302)
-    else:
-        session.close()
-        raise Exception(f"cant remove container user expired")
+    with db_access_lock:
+        session = orm_session_maker()
+        s = session.query(Session3DSlicer).get(session_id)
+        if s:
+            container_name = CONTAINER_NAME_PREFIX + container_orchestrator.get_valid_name(s.user)
+            status = container_orchestrator.get_container_status(container_name)
+            if status:
+                stop_remove_container(container_name, True)
+                logger.info(f"container {container_name} deleted")
+            logger.info(f"deleting session {s.uuid}")
+            session.delete(s)
+            session.commit()
+            # Update nginx.conf and reread Nginx configuration
+            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+            session.close()
+            return RedirectResponse(url="/", status_code=302)
+        else:
+            session.close()
+            raise Exception(f"cant remove container user expired")
 
 
 def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
@@ -594,21 +601,22 @@ class BackgroundRunner:
 
         # After initialization, infinite loop
         while True:
-            sess = sm()
-            # Loop all sessions, remove those that are not in use
-            for s in sess.query(Session3DSlicer).all():
-                print(f"Session - Name: {s.container_name};\n UUID: {s.uuid};\n User: {s.user}\n")
-                stop = await check_session_activity(s)  # Implicit parameter: "s" (3dslicer session)
-                sess.add(s)
-                if stop:
-                    logger.info(f"::::::::::::::::: sessions_checker - inactivity cleanup - stopping container {s.container_name}")
-                    stop_remove_container(s.container_name)
-                    sess.delete(s)
-                    # Update nginx.conf and reread Nginx configuration
-                    await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
+            with db_access_lock:
+                sess = sm()
+                # Loop all sessions, remove those that are not in use
+                for s in sess.query(Session3DSlicer).all():
+                    print(f"Session - Name: {s.container_name};\n UUID: {s.uuid};\n User: {s.user}\n")
+                    stop = await check_session_activity(s)  # Implicit parameter: "s" (3dslicer session)
+                    sess.add(s)
+                    if stop:
+                        logger.info(f"::::::::::::::::: sessions_checker - inactivity cleanup - stopping container {s.container_name}")
+                        stop_remove_container(s.container_name)
+                        sess.delete(s)
+                        # Update nginx.conf and reread Nginx configuration
+                        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
 
-            sess.commit()
-            sess.close()
+                sess.commit()
+                sess.close()
             await asyncio.sleep(60)
 
 
