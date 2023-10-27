@@ -71,5 +71,45 @@
     </form>
 </div>
 {% endif %}
+    uuid = Column(GUID, nullable=False, primary_key=True, default=uuid.uuid4)
+    created_at = Column(DateTime, default=datetime.datetime.now())
+    last_activity = Column(DateTime, nullable=True)
+    user = Column(String(64), unique=True, nullable=False)
+    url_path = Column(String(1024), nullable=True)
+    service_address = Column(String(1024), nullable=True)
+    container_name = Column(String(128), nullable=True)
+    restart = Column(Boolean, nullable=False, default=False)
+    gpu = Column(Boolean, nullable=False, default=False)
+
+{% if len(sessions_list) > 0 %}
+<div class="flex p-4 m-6 justify-center">
+<table>
+    <thead>
+        <tr>
+            <th>UUID</th>
+            <th>Creation</th>
+            <th>Last activity</th>
+            <th>User</th>
+            <th>Container</th>
+            <th>Restart</th>
+            <th>GPU</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in sessions_list %}
+        <tr>
+            <td>{{ s.uuid }}</td>
+            <td>{{ s.created_at }}</td>
+            <td>{{ s.last_activity }}</td>
+            <td>{{ s.user }}</td>
+            <td>{{ s.container_name }}</td>
+            <td>{{ s.restart }}</td>
+            <td>{{ s.gpu }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
 </body>
 </html>

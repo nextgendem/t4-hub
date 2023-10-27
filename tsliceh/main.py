@@ -334,8 +334,15 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
 async def get_session_management_page(request: Request, session_id: str):
     session = orm_session_maker()
     s = session.query(Session3DSlicer).get(session_id)
+    lst = []
+    if s.user == "free_user_admin":
+        for _ in session.query(Session3DSlicer).all():
+            d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
+            lst.append(d)
+
     _ = dict(request=request,
              url_base="",
+             sessions_list=lst,
              sess_uuid=session_id,
              sess_link=s.url_path,
              sess_user=s.user,
