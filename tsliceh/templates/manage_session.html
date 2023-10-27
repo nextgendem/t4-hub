@@ -81,7 +81,7 @@
     restart = Column(Boolean, nullable=False, default=False)
     gpu = Column(Boolean, nullable=False, default=False)
 
-{% if sessions_list|len > 0 %}
+{% if sessions_list|length > 0 %}
 <div class="flex p-4 m-6 justify-center">
 <table>
     <thead>
