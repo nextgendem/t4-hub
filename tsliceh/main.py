@@ -26,12 +26,12 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import exc
 from starlette.responses import RedirectResponse, HTMLResponse
-from multiprocessing import Lock
 
 import ldap3
 from ldap3.core.exceptions import LDAPException
 from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, get_ldap_address, \
     get_domain_name
+from tsliceh.gunicorn_config import lock
 from tsliceh.orchestrators import create_docker_network, IContainerOrchestrator, container_orchestrator_factory
 from tsliceh.volumes import create_all_volumes, volume_dict
 from tsliceh.helpers import get_container_internal_address
@@ -81,7 +81,7 @@ url_base = f"{proto}://{domain}"
 engine = create_local_orm(db_conn_str)
 create_tables(engine)
 orm_session_maker = create_session_factory(engine)
-db_access_lock = Lock()
+db_access_lock = lock
 
 if co_str == "docker_compose":
     network_id = create_docker_network(network_name)
