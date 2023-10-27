@@ -272,7 +272,6 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
         if await can_open_session(username):
             with db_access_lock:
                 session = orm_session_maker()
-                s = Session3DSlicer()
                 container_launched = False
                 try:
                     s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
@@ -280,6 +279,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                         # Create new session (IF there is room)
                         cont = count_active_session_containers(session)
                         if cont < max_sessions:
+                            s = Session3DSlicer()
                             s.user = username
                             s.last_activity = datetime.datetime.now()
                             s.gpu = gpu
