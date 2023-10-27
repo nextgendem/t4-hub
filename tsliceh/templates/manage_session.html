@@ -16,6 +16,15 @@
             window.open(url, title, 'toolbar=1,location=1,directories=1,status=1,menubar=1,scrollbars=1,resizable=1');
         }
     </script>
+    <style>
+        table {
+            border-collapse: collapse;
+            border: 1px solid black;
+        }
+        th, td {
+            border: 1px solid black;
+        }
+    </style>
 </head>
 <body>
 <div class="flex p-4 m-6 justify-center">
@@ -74,7 +83,7 @@
 
 {% if sessions_list|length > 0 %}
 <div class="flex p-4 m-6 justify-center">
-<table style="border-collapse: collapse; border: 1px solid black;">
+<table>
     <thead>
         <tr>
             <th>UUID</th>
