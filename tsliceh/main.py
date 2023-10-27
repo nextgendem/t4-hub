@@ -140,6 +140,8 @@ http {{
 
     location / {{
       proxy_pass http://{tds_address};
+      proxy_connect_timeout 300s;
+      proxy_read_timeout 600s;      
     }}
     """
         # Variable length section, for each location
