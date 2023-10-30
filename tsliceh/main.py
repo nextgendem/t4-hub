@@ -646,9 +646,7 @@ runner = BackgroundRunner()
 
 @app.on_event("startup")
 async def startup():
-    # asyncio.create_task(runner.sessions_checker(orm_session_maker))
-    pass
-
+    asyncio.create_task(runner.sessions_checker(orm_session_maker))
 
 if __name__ == "__main__":
     import uvicorn
