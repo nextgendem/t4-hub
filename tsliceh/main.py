@@ -509,6 +509,7 @@ async def launch_3dslicer_web_container(s: Session3DSlicer):
     container_orchestrator.create_image(tdslicer_image_name, tdslicer_image_tag)
     create_all_volumes(container_orchestrator, s.user)
     vol_dict = volume_dict(s.user)
+    await asyncio.sleep(5)
     c = await container_orchestrator.start_container(container_name, tdslicer_image_name, tdslicer_image_tag,
                                                      network_id, vol_dict, s.uuid, use_gpu = s.gpu)
     logs = c.logs
