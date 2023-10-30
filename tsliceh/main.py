@@ -348,18 +348,18 @@ async def get_session_management_page(request: Request, session_id: str):
              sess_link=s.url_path,
              sess_user=s.user,
              sess_shared=s.info['shared'])
-    n = 0
-    while True:
-        container_status = container_orchestrator.get_container_status(s.container_name)
-        if container_status == "Status: Running":
-            break
-        if n == 10:
-            container_status = "can't initiate 3dSlicer"
-        await time.sleep(1)
-        n = + 1
+    # n = 0
+    # while True:
+    #     container_status = container_orchestrator.get_container_status(s.container_name)
+    #     if container_status == "Status: Running":
+    #         break
+    #     if n == 10:
+    #         container_status = "can't initiate 3dSlicer"
+    #     await time.sleep(1)
+    #     n = + 1
 
     session.close()
-    return templates.TemplateResponse("manage_session.html", _, container_status)
+    return templates.TemplateResponse("manage_session.html", _)
 
 
 @app.post("/sessions/{session_id}/share")
