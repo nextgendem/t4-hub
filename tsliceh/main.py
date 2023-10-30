@@ -355,7 +355,7 @@ async def get_session_management_page(request: Request, session_id: str):
             break
         if n == 10:
             container_status = "can't initiate 3dSlicer"
-        time.sleep(1)
+        await time.sleep(1)
         n = + 1
 
     session.close()
@@ -645,7 +645,8 @@ runner = BackgroundRunner()
 
 @app.on_event("startup")
 async def startup():
-    asyncio.create_task(runner.sessions_checker(orm_session_maker))
+    # asyncio.create_task(runner.sessions_checker(orm_session_maker))
+    pass
 
 
 if __name__ == "__main__":
