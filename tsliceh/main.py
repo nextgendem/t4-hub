@@ -579,7 +579,9 @@ class BackgroundRunner:
 
         tdslicer_containers = container_orchestrator.get_tdscontainers(CONTAINER_NAME_PREFIX)
 
-        # Reassociate, restart or delete 3D Slicer sessions if we are back from a restart of the container
+        # Reassociate, restart or delete 3D Slicer Sessions if we are back from a restart of the container
+        # Restart relaunches 3DSlicer ("restart" is always False, so this is disabled currently)
+        # Delete
         sess = sm()
         for s in sess.query(Session3DSlicer).all():
             pct = container_orchestrator.get_container_activity(s.container_name)
@@ -596,7 +598,7 @@ class BackgroundRunner:
                 else:
                     logger.info(f"::::::::::::::::: sessions_checker - deleting session {s.user} because associated container does not exist")
                     sess.delete(s)
-            else:
+            else:  # "Container exists"
                 if s.restart:
                     logger.info(f"::::::::::::::::: sessions_checker - reassociating session {s.user} with container {s.container_name}")
                     s.info['CPU_pct'] = ACTIVITY_THRESHOLD + 1
@@ -623,6 +625,8 @@ class BackgroundRunner:
         # After initialization, infinite loop
         while True:
             with db_access_lock:
+                print(f"Checking for inactive containers (to remove them). "
+                      f"Inactivity time (secs): {allowed_inactivity_time_in_seconds}")
                 sess = sm()
                 # Loop all sessions, remove those that are not in use
                 for s in sess.query(Session3DSlicer).all():
@@ -638,6 +642,7 @@ class BackgroundRunner:
 
                 sess.commit()
                 sess.close()
+                print("Check finished --------------")
             await asyncio.sleep(60)
 
 
