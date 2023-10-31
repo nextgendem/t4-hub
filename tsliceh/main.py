@@ -295,6 +295,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                             container_launched = True
                             pct = container_orchestrator.get_container_activity(s.container_name)
                             s.info = {'CPU_pct': pct, 'shared': False}
+                            flag_modified(s, "info")
                             # Commit new
                             session.add(s)
                             session.commit()
