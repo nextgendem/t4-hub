@@ -525,10 +525,11 @@ spec:
         cmd = ["get", "deployment", f"deploy-{container_name}"]
         res = Kubernetes._exec_kubectl("Stop container, check dpl exists", cmd)
         if res is None:
-            return
+            return False
         # Set the number of replicas to 0
         cmd = ["scale", "--replicas=0", f"deployment/deploy-{container_name}"]
         res = Kubernetes._exec_kubectl("Stop container, set RS replicas to 0", cmd)
+        return True
 
     def restart_container(self, container_name):
         # First check the deployment exists
