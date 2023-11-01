@@ -149,9 +149,17 @@ http {{
             for s in sess.query(Session3DSlicer).all():
                 # Section doing reverse proxy magic
                 _ += f"""
-  
+
     location /{s.uuid}/ {{
         proxy_pass http://{s.service_address}/;          
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;           
+    }}
+
+    location /{s.uuid}-files/ {{
+        proxy_pass http://{s.other_address}/;          
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -349,6 +357,7 @@ async def get_session_management_page(request: Request, session_id: str):
              sessions_list=lst,
              sess_uuid=session_id,
              sess_link=s.url_path,
+             files_link=f"/{s.uuid}-files/",
              sess_user=s.user,
              sess_shared=s.info['shared'])
     # n = 0

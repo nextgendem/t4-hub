@@ -62,6 +62,14 @@ class Session3DSlicer(SQLAlchemyBase):
     gpu = Column(Boolean, nullable=False, default=False)
     info = Column(JSON)
 
+    @property
+    def other_address(self):
+        from urllib.parse import urlparse, urlunparse
+        alt_port = 8085  # Files web
+        parsed_url = urlparse(self.service_address)
+        parsed_url = parsed_url._replace(netloc=f"{parsed_url.hostname}:{str(alt_port)}")
+        return urlunparse(parsed_url)
+
 
 def create_local_orm(conn_str):
     from sqlalchemy import create_engine
