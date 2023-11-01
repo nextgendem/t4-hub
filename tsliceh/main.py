@@ -32,6 +32,7 @@ from ldap3.core.exceptions import LDAPException
 from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, get_ldap_address, \
     get_domain_name
 from tsliceh.gunicorn_config import lock
+from contextlib import nullcontext
 from tsliceh.orchestrators import create_docker_network, IContainerOrchestrator, container_orchestrator_factory
 from tsliceh.volumes import create_all_volumes, volume_dict
 from tsliceh.helpers import get_container_internal_address
@@ -81,7 +82,7 @@ url_base = f"{proto}://{domain}"
 engine = create_local_orm(db_conn_str)
 create_tables(engine)
 orm_session_maker = create_session_factory(engine)
-db_access_lock = lock
+db_access_lock = nullcontext() if "postgresql" in db_conn_str else lock
 
 if co_str == "docker_compose":
     network_id = create_docker_network(network_name)
@@ -232,7 +233,7 @@ def count_active_session_containers(sess):
 # Welcome & login page
 @app.get("/index.html")
 async def index_page():
-    print(f"INDEX.HTML - DB Access Lock: {db_access_lock} ------------")
+    print(f"INDEX.HTML - DB Access Lock: {db_access_lock} (type {type(db_access_lock)}) ------------")
     with db_access_lock:
         session = orm_session_maker()
         return HTMLResponse(content=refresh_index_html(session, proto=proto, admin=False, write_to_file=False),
@@ -278,10 +279,10 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
     if re.match(r".*_gpu$", login_form.username):
         gpu = True
     else:
-        gpu= False
+        gpu = False
     if await check_credentials(username, password):
         if await can_open_session(username):
-            print(f"LOGIN - DB Access Lock: {db_access_lock} ------------")
+            print(f"LOGIN - DB Access Lock: {db_access_lock} (type {type(db_access_lock)}) ------------")
             with db_access_lock:
                 session = orm_session_maker()
                 container_launched = False
@@ -594,37 +595,38 @@ class BackgroundRunner:
         # Reassociate, restart or delete 3D Slicer Sessions if we are back from a restart of the container
         # Restart relaunches 3DSlicer ("restart" is always False, so this is disabled currently)
         # Delete
-        sess = sm()
-        for s in sess.query(Session3DSlicer).all():
-            pct = container_orchestrator.get_container_activity(s.container_name)
-            logger.info(f"pct container: {s.container_name}: {pct} ")
-            s.last_activity = datetime.datetime.now()
-            s.info['CPU_pct'] = pct
-            if pct < 0:  # <0 -> "Container does not exist"
-                if s.restart:
-                    # TODO right now "restart" is always False so this is never executed
-                    logger.info(f"::::::::::::::::: sessions_checker - restarting container for user {s.user}")
-                    await launch_3dslicer_web_container(s)
-                    s.info['CPU_pct'] = ACTIVITY_THRESHOLD + 1
-                    sess.add(s)
-                else:
-                    logger.info(f"::::::::::::::::: sessions_checker - deleting session {s.user} because associated container does not exist")
-                    sess.delete(s)
-            else:  # "Container exists"
-                if s.restart:
-                    logger.info(f"::::::::::::::::: sessions_checker - reassociating session {s.user} with container {s.container_name}")
-                    s.info['CPU_pct'] = ACTIVITY_THRESHOLD + 1
-                    tdslicer_containers.remove(s.container_name)  # Do not delete this container
-                    sess.add(s)
-                else:
-                    logger.info(f"::::::::::::::::: sessions_checker - removing container and session for {s.user}, with container {s.container_name}")
-                    stop_remove_container(s.container_name)
-                    tdslicer_containers.remove(s.container_name)
-                    sess.delete(s)
-            flag_modified(s, "info")
+        with db_access_lock:
+            sess = sm()
+            for s in sess.query(Session3DSlicer).all():
+                pct = container_orchestrator.get_container_activity(s.container_name)
+                logger.info(f"pct container: {s.container_name}: {pct} ")
+                s.last_activity = datetime.datetime.now()
+                s.info['CPU_pct'] = pct
+                if pct < 0:  # <0 -> "Container does not exist"
+                    if s.restart:
+                        # TODO right now "restart" is always False so this is never executed
+                        logger.info(f"::::::::::::::::: sessions_checker - restarting container for user {s.user}")
+                        await launch_3dslicer_web_container(s)
+                        s.info['CPU_pct'] = ACTIVITY_THRESHOLD + 1
+                        sess.add(s)
+                    else:
+                        logger.info(f"::::::::::::::::: sessions_checker - deleting session {s.user} because associated container does not exist")
+                        sess.delete(s)
+                else:  # "Container exists"
+                    if s.restart:
+                        logger.info(f"::::::::::::::::: sessions_checker - reassociating session {s.user} with container {s.container_name}")
+                        s.info['CPU_pct'] = ACTIVITY_THRESHOLD + 1
+                        tdslicer_containers.remove(s.container_name)  # Do not delete this container
+                        sess.add(s)
+                    else:
+                        logger.info(f"::::::::::::::::: sessions_checker - removing container and session for {s.user}, with container {s.container_name}")
+                        stop_remove_container(s.container_name)
+                        tdslicer_containers.remove(s.container_name)
+                        sess.delete(s)
+                flag_modified(s, "info")
 
-        sess.commit()
-        sess.close()
+            sess.commit()
+            sess.close()
         # Update nginx.conf and reread Nginx configuration
         await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
 

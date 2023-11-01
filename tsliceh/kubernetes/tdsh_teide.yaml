@@ -237,9 +237,6 @@ spec:
         name: ldap-certs
       - name: container-run
         emptyDir: {}
-
-
-
 ---
 # ldap cluster
 
@@ -253,4 +250,46 @@ spec:
   ports:
     - protocol: TCP
       port: 389
+  type: ClusterIP
+---
+# PostgreSQL
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      containers:
+      - name: postgresql
+        image: postgres:latest
+        env:
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "postgres"
+        - name: POSTGRES_DB
+          value: "sessions_db"
+        ports:
+        - containerPort: 5432
+---
+# Expose PostgreSQL to the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+spec:
+  selector:
+    app: postgresql
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
   type: ClusterIP
