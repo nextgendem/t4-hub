@@ -64,11 +64,10 @@ class Session3DSlicer(SQLAlchemyBase):
 
     @property
     def other_address(self):
-        from urllib.parse import urlparse, urlunparse
-        alt_port = 8085  # Files web
-        parsed_url = urlparse(self.service_address)
-        parsed_url = parsed_url._replace(netloc=f"{parsed_url.hostname}:{str(alt_port)}")
-        return urlunparse(parsed_url)
+        parts = self.service_address.split(':')
+        alt_port = 8085  # Files web port
+        parts[-1] = str(alt_port)
+        return ':'.join(parts)
 
 
 def create_local_orm(conn_str):
