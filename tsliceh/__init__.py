@@ -72,7 +72,11 @@ class Session3DSlicer(SQLAlchemyBase):
 
 def create_local_orm(conn_str):
     from sqlalchemy import create_engine
-    return create_engine(conn_str, echo=True, connect_args={"check_same_thread": False})
+    if "postgresql" in conn_str:
+        args = {}
+    else:
+        args = {"check_same_thread": False}
+    return create_engine(conn_str, echo=True, connect_args=args)
 
 
 def create_session_factory(engine_):
