@@ -51,7 +51,7 @@ SQLAlchemyBase = declarative_base(cls=Base)
 
 class Session3DSlicer(SQLAlchemyBase):
     __tablename__ = "sessions"
-    uuid = Column(GUID, nullable=False, primary_key=True, default=uuid.uuid4)
+    uuid = Column(GUID, nullable=False, primary_key=True)
     created_at = Column(DateTime, default=datetime.datetime.now())
     last_activity = Column(DateTime, nullable=True)
     user = Column(String(64), unique=True, nullable=False)

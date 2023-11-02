@@ -15,6 +15,7 @@ import datetime
 import os
 import re
 import sys
+import uuid
 
 from dotenv import load_dotenv
 
@@ -233,7 +234,6 @@ def count_active_session_containers(sess):
 # Welcome & login page
 @app.get("/index.html")
 async def index_page():
-    print(f"INDEX.HTML - DB Access Lock: {db_access_lock} (type {type(db_access_lock)}) ------------")
     with db_access_lock:
         session = orm_session_maker()
         return HTMLResponse(content=refresh_index_html(session, proto=proto, admin=False, write_to_file=False),
@@ -282,7 +282,6 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
         gpu = False
     if await check_credentials(username, password):
         if await can_open_session(username):
-            print(f"LOGIN - DB Access Lock: {db_access_lock} (type {type(db_access_lock)}) ------------")
             with db_access_lock:
                 session = orm_session_maker()
                 container_launched = False
@@ -293,20 +292,19 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                         cont = count_active_session_containers(session)
                         if cont < max_sessions:
                             s = Session3DSlicer()
+                            s.uuid = uuid.uuid4()
                             s.user = username
                             s.last_activity = datetime.datetime.now()
                             s.gpu = gpu
                             session.add(s)
-                            session.flush()
                             s.url_path = f"/{s.uuid}/"
                             # Launch new 3d slicer container (it also sets the "container_name" field)
                             await launch_3dslicer_web_container(s)
                             container_launched = True
                             pct = container_orchestrator.get_container_activity(s.container_name)
                             s.info = {'CPU_pct': pct, 'shared': False}
-                            flag_modified(s, "info")
+                            # flag_modified(s, "info")
                             # Commit new
-                            session.add(s)
                             session.commit()
                             # Update nginx.conf and reread Nginx configuration
                             await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
@@ -515,14 +513,14 @@ async def launch_3dslicer_web_container(s: Session3DSlicer):
     """
     Launch a 3DSlicer web container
     """
-    # just a container per user
+    # just one container per user
     container_name = CONTAINER_NAME_PREFIX + container_orchestrator.get_valid_name(s.user)
 
     logger.info("CREATING NEW CONTAINER")
     container_orchestrator.create_image(tdslicer_image_name, tdslicer_image_tag)
     create_all_volumes(container_orchestrator, s.user)
     vol_dict = volume_dict(s.user)
-    await asyncio.sleep(5)
+    # await asyncio.sleep(5)
     c = await container_orchestrator.start_container(container_name, tdslicer_image_name, tdslicer_image_tag,
                                                      network_id, vol_dict, s.uuid, use_gpu = s.gpu)
     logs = c.logs
