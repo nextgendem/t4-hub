@@ -106,7 +106,7 @@ elif co_str == "kubernetes":
     ldap_address = f"{ldap_host}:{ldap_port}"  # TODO Obtain ldap_adress from kubernetes
     CONTAINER_NAME_PREFIX = "slicer-"
 
-    #logger = logging.getLogger(__name__)  # 1
+    # logger = logging.getLogger(__name__)  # 1
     logger.setLevel(logging.DEBUG)  # 2
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(logging.DEBUG)
@@ -236,8 +236,10 @@ def count_active_session_containers(sess):
 async def index_page():
     with db_access_lock:
         session = orm_session_maker()
-        return HTMLResponse(content=refresh_index_html(session, proto=proto, admin=False, write_to_file=False),
+        r = HTMLResponse(content=refresh_index_html(session, proto=proto, admin=False, write_to_file=False),
                             status_code=200)
+        session.close()
+        return r
 
 
 @app.get("/")
@@ -296,15 +298,14 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                             s.user = username
                             s.last_activity = datetime.datetime.now()
                             s.gpu = gpu
-                            session.add(s)
                             s.url_path = f"/{s.uuid}/"
                             # Launch new 3d slicer container (it also sets the "container_name" field)
                             await launch_3dslicer_web_container(s)
                             container_launched = True
                             pct = container_orchestrator.get_container_activity(s.container_name)
                             s.info = {'CPU_pct': pct, 'shared': False}
-                            # flag_modified(s, "info")
                             # Commit new
+                            session.add(s)
                             session.commit()
                             # Update nginx.conf and reread Nginx configuration
                             await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
@@ -342,23 +343,32 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
 
 @app.get("/sessions/{session_id}")
 async def get_session_management_page(request: Request, session_id: str):
-    import time
     session = orm_session_maker()
     s = session.query(Session3DSlicer).get(session_id)
     lst = []
-    if s.user == "free_user_admin":
-        for _ in session.query(Session3DSlicer).all():
-            d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
-            lst.append(d)
+    if s is None:
+        _ = dict(request=request,
+                 url_base="",
+                 sessions_list=lst,
+                 sess_uuid=session_id,
+                 sess_link=f"",
+                 files_link=f"",
+                 sess_user="Session ID not found",
+                 sess_shared="Session ID not found")
+    else:
+        if s.user == "free_user_admin":
+            for _ in session.query(Session3DSlicer).all():
+                d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
+                lst.append(d)
 
-    _ = dict(request=request,
-             url_base="",
-             sessions_list=lst,
-             sess_uuid=session_id,
-             sess_link=s.url_path,
-             files_link=f"/{s.uuid}-files/",
-             sess_user=s.user,
-             sess_shared=s.info['shared'])
+        _ = dict(request=request,
+                 url_base="",
+                 sessions_list=lst,
+                 sess_uuid=session_id,
+                 sess_link=s.url_path,
+                 files_link=f"/{s.uuid}-files/",
+                 sess_user=s.user,
+                 sess_shared=s.info['shared'])
     # n = 0
     # while True:
     #     container_status = container_orchestrator.get_container_status(s.container_name)
