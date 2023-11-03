@@ -501,9 +501,13 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
     for s in sess.query(Session3DSlicer).all():
         if admin or s.info["shared"]:
             # Section doing reverse proxy magic
+            if s.info.get('shared_interactive', 0):
+                _url = s.url_path
+            else:
+                _url = f"{s.url_path}/?view_only=true"
             _ += f"""
 <div class="w3-quarter">
-<a href="{s.url_path}" target="_blank" rel="noopener noreferrer">
+<a href="{_url}" target="_blank" rel="noopener noreferrer">
 <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:23%" class="w3-circle w3-hover-opacity">
 </a>
 <h3>{s.user}</h3>
