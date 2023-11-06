@@ -653,21 +653,21 @@ class BackgroundRunner:
             with db_access_lock:
                 print(f"Checking for inactive containers (to remove them). "
                       f"Inactivity time (secs): {allowed_inactivity_time_in_seconds}")
-                # sess = sm()
-                # # Loop all sessions, remove those that are not in use
-                # for s in sess.query(Session3DSlicer).all():
-                #     print(f"Session - Name: {s.container_name};\n UUID: {s.uuid};\n User: {s.user}\n")
-                #     stop = await check_session_activity(s)  # Implicit parameter: "s" (3dslicer session)
-                #     sess.add(s)
-                #     if stop:
-                #         logger.info(f"::::::::::::::::: sessions_checker - inactivity cleanup - stopping container {s.container_name}")
-                #         stop_remove_container(s.container_name)
-                #         sess.delete(s)
-                #         # Update nginx.conf and reread Nginx configuration
-                #         await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
-                #
-                # sess.commit()
-                # sess.close()
+                sess = sm()
+                # Loop all sessions, remove those that are not in use
+                for s in sess.query(Session3DSlicer).all():
+                    print(f"Session - Name: {s.container_name};\n UUID: {s.uuid};\n User: {s.user}\n")
+                    stop = await check_session_activity(s)  # Implicit parameter: "s" (3dslicer session)
+                    sess.add(s)
+                    if stop:
+                        logger.info(f"::::::::::::::::: sessions_checker - inactivity cleanup - stopping container {s.container_name}")
+                        stop_remove_container(s.container_name)
+                        sess.delete(s)
+                        # Update nginx.conf and reread Nginx configuration
+                        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
+
+                sess.commit()
+                sess.close()
                 print("Check finished --------------")
             await asyncio.sleep(60)
 
