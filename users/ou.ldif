@@ -11,5 +11,5 @@ ou: dhis2
 dn: ou=slicerhub,dc=opendx,dc=org
 objectClass: top
 objectClass: organizationalUnit
-ou: dhis2
+ou: slicerhub
 

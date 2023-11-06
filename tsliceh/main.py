@@ -68,7 +68,7 @@ allowed_inactivity_time_in_seconds = int(os.getenv("INACTIVITY_TIME_SEC"))
 network_name = os.getenv('NETWORK_NAME')
 proto = os.getenv('PROTO')
 nfs_server = os.getenv('NFS_SERVER')  # Not used. Teide provides NFS mounts directly to all nodes
-ldap_base = "ou=jupyterhub,dc=opendx,dc=org"
+ldap_base = "ou=slicerhub,dc=opendx,dc=org"
 co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")
 tdslicer_image_name = "localhost:5000/opendx28/slicer"
 tdslicer_image_tag = "latest"
