@@ -160,8 +160,8 @@ http {{
         proxy_set_header X-Forwarded-Proto $scheme;           
     }}
 
-    location /{s.uuid}-files/(.*) {{
-        proxy_pass http://{s.other_address}/$1;          
+    location /{s.uuid}-files/ {{
+        proxy_pass http://{s.other_address}/;          
         proxy_set_header Host $host;
         client_max_body_size 100M;
         proxy_set_header X-Real-IP $remote_addr;
