@@ -161,7 +161,7 @@ http {{
     }}
 
     location /{s.uuid}-files/(.*) {{
-        proxy_pass http://{s.other_address}/;          
+        proxy_pass http://{s.other_address}/$1;;          
         proxy_set_header Host $host;
         client_max_body_size 100M;
         proxy_set_header X-Real-IP $remote_addr;
