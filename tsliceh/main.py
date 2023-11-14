@@ -131,6 +131,7 @@ events {{
 }}
 
 http {{
+  sub_filter_types text/html text/css application/javascript;
   log_format custom '$remote_addr - $remote_user [$time_local] "$request" '
                     '$status $body_bytes_sent "$http_referer" '
                     '"$http_user_agent" "$uri" "$http_x_forwarded_for" "$request_filename"';
@@ -159,15 +160,19 @@ http {{
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;           
     }}
-
+    
     location /{s.uuid}-files/ {{
-        proxy_pass http://{s.other_address}/;          
+        proxy_pass http://{s.other_address}/;
+        sub_filter 'href="/'  'href="/{s.uuid}-files/';
+        sub_filter 'src="/'  'src="/{s.uuid}-files/';
+        sub_filter_once off;
+
         proxy_set_header Host $host;
         client_max_body_size 100M;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;           
-    }}
+        proxy_set_header X-Forwarded-Proto $scheme; 
+    }}    
 
     location /{s.uuid}-ws {{
         proxy_pass http://{s.service_address}/websockify;
