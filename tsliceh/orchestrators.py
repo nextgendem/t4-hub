@@ -316,9 +316,9 @@ kubectl logs -f proxy-shub -c nginx-container
 
     def _container_action(self, container_name, image_name, vol_dict, network_id, uid, use_gpu = False, operation="apply"):
         # assign cpu resource to pod or container https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/ 
-        cpu_limit = "4"
-        cpu_requested = "3"
-        cpu_attemp_to_use = "3"
+        cpu_limit = "7"
+        cpu_requested = "6"
+        cpu_attemp_to_use = "5"
 
         mount_type = "NFS"
         mount_nfs_base = "/mnt/opendx28"
@@ -367,6 +367,10 @@ spec:
         app-user: {container_name}
     spec:
       volumes:
+        - hostPath:
+          path: {mount_nfs_base}/config-3dslicerhub
+          type: Directory
+        name: config
 {container_vols}              
       containers:
       - name: {container_name}
@@ -391,6 +395,8 @@ spec:
         - name: VNC_DISABLE_AUTH
           value: "true"
         volumeMounts:
+            - name: config
+              mountPath: /etc/kasmvnc/
 {container_vol_mounts}        
         ports:
         - containerPort: 6901
