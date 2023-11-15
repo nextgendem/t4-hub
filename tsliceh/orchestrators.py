@@ -367,11 +367,11 @@ spec:
         app-user: {container_name}
     spec:
       volumes:
-        - hostPath:
-          path: {mount_nfs_base}/config-3dslicerhub
-          type: Directory
-        name: config
-{container_vols}              
+{container_vols}    
+        - name: config
+          hostPath:
+            path: {mount_nfs_base}/config-3dslicerhub
+            type: Directory        
       containers:
       - name: {container_name}
         image: {image_name}
@@ -395,8 +395,8 @@ spec:
         - name: VNC_DISABLE_AUTH
           value: "true"
         volumeMounts:
-            - name: config
-              mountPath: /etc/kasmvnc/
+          - name: config
+            mountPath: /etc/kasmvnc/
 {container_vol_mounts}        
         ports:
         - containerPort: 6901
