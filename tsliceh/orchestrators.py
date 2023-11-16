@@ -316,9 +316,8 @@ kubectl logs -f proxy-shub -c nginx-container
 
     def _container_action(self, container_name, image_name, vol_dict, network_id, uid, use_gpu = False, operation="apply"):
         # assign cpu resource to pod or container https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/ 
-        cpu_limit = "7"
-        cpu_requested = "6"
-        cpu_attemp_to_use = "5"
+        cpu_limit = "8" # no podrá usar más de esto
+        cpu_requested = "3" # cpu garanztizada
 
         mount_type = "NFS"
         mount_nfs_base = "/mnt/opendx28"
@@ -337,6 +336,8 @@ kubectl logs -f proxy-shub -c nginx-container
             indent = " "*16
             nvidia_gpu = f"{indent}nvidia.com/gpu: 1"
             indent = " "*6
+            cpu_requested = "0.5"
+            cpu_limit = "4"
             gpu_toleration = "\n".join([f"{indent}tolerations:", 
                             f"{indent}- key: nvidia.com/gpu", 
                             f"{indent}  operator: Exists",
@@ -388,9 +389,6 @@ spec:
 {nvidia_gpu}
             requests:
                 cpu: "{cpu_requested}"
-        args:
-        - -cpus
-        - "{cpu_attemp_to_use}"
         env:
         - name: VNC_DISABLE_AUTH
           value: "true"

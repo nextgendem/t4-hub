@@ -16,3 +16,4 @@ tsliceh/logs
 
 *.log
 .env
+*.ipynb
