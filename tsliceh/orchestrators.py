@@ -384,9 +384,9 @@ spec:
         securityContext:
           runAsUser: 0 # Run as root user
         resources:
-#             limits:
-#                 cpu: "{cpu_limit}"
-# {nvidia_gpu}
+            limits:
+                cpu: "{cpu_limit}"
+{nvidia_gpu}
             requests:
                 cpu: "{cpu_requested}"
         env:
