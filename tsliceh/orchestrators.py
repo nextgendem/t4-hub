@@ -316,8 +316,9 @@ kubectl logs -f proxy-shub -c nginx-container
 
     def _container_action(self, container_name, image_name, vol_dict, network_id, uid, use_gpu = False, operation="apply"):
         # assign cpu resource to pod or container https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/ 
-        cpu_limit = "8" # no podrá usar más de esto
-        cpu_requested = "3" # cpu garanztizada
+        ncores_cpu_limit = "8" # no podrá usar más de esto
+        ncores_cpu_requested = "3" # cpu garanztizada
+
 
         mount_type = "NFS"
         mount_nfs_base = "/mnt/opendx28"
@@ -332,19 +333,32 @@ kubectl logs -f proxy-shub -c nginx-container
             _ = "\n".join([f"- name: vol-{container_name}-{i}\n  mountPath: \"{v['bind']}\"" for i, (k, v) in enumerate(vol_dict.items())])
             indentation = 10
             container_vol_mounts = textwrap.indent(_, " " * indentation)
+
         if use_gpu:
             indent = " "*16
             nvidia_gpu = f"{indent}nvidia.com/gpu: 1"
             indent = " "*6
-            cpu_requested = "0.5"
-            cpu_limit = "4"
+            ncores_cpu_requested = "0.5"
+            ncores_cpu_limit = "4"
             gpu_toleration = "\n".join([f"{indent}tolerations:", 
                             f"{indent}- key: nvidia.com/gpu", 
                             f"{indent}  operator: Exists",
                             f"{indent}  effect: NoSchedule"])
+
         else:
             nvidia_gpu =""
             gpu_toleration=""
+
+        indent = " "*16
+        cpu_limit = f'{indent}cpu: "{ncores_cpu_limit}"'
+        cpu_requested = f'{indent}cpu: "{ncores_cpu_requested}'
+
+
+        if "_no_limit_" in container_name:
+            cpu_requested = ""
+
+
+
                                     
             
 
@@ -385,10 +399,10 @@ spec:
           runAsUser: 0 # Run as root user
         resources:
             limits:
-                cpu: "{cpu_limit}"
+{cpu_limit}
 {nvidia_gpu}
             requests:
-                cpu: "{cpu_requested}"
+{cpu_requested}
         env:
         - name: VNC_DISABLE_AUTH
           value: "true"
