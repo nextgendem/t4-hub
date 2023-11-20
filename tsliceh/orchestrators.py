@@ -355,7 +355,7 @@ kubectl logs -f proxy-shub -c nginx-container
 
 
         if "cpusinlimite" in container_name:
-            cpu_requested = ""
+            cpu_limit = ""
 
 
         if nvidia_gpu=="" and cpu_limit=="":
