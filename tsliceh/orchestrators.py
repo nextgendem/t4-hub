@@ -351,10 +351,10 @@ kubectl logs -f proxy-shub -c nginx-container
 
         indent = " "*16
         cpu_limit = f'{indent}cpu: "{ncores_cpu_limit}"'
-        cpu_requested = f'{indent}cpu: "{ncores_cpu_requested}'
+        cpu_requested = f'{indent}cpu: "{ncores_cpu_requested}"'
 
 
-        if "_no_limit_" in container_name:
+        if "cpusinlimite" in container_name:
             cpu_requested = ""
 
 
