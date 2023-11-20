@@ -316,8 +316,8 @@ kubectl logs -f proxy-shub -c nginx-container
 
     def _container_action(self, container_name, image_name, vol_dict, network_id, uid, use_gpu = False, operation="apply"):
         # assign cpu resource to pod or container https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/ 
-        ncores_cpu_limit = "8" # no podrá usar más de esto
-        ncores_cpu_requested = "3" # cpu garanztizada
+        ncores_cpu_limit = "15" # no podrá usar más de esto
+        ncores_cpu_requested = "10" # cpu garanztizada
 
 
         mount_type = "NFS"
