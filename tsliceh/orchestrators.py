@@ -358,10 +358,15 @@ kubectl logs -f proxy-shub -c nginx-container
             cpu_requested = ""
 
 
-
-                                    
+        if nvidia_gpu=="" and cpu_limit=="":
+            limits = ""
+        else:
+            limits = f"""
+{" " * 12}limits:
+{cpu_limit}
+{nvidia_gpu}                
+                    """
             
-
         # Generate a manifest file, apply it, remove the manifest
         _ = f"""
 apiVersion: apps/v1
@@ -398,9 +403,7 @@ spec:
         securityContext:
           runAsUser: 0 # Run as root user
         resources:
-            limits:
-{cpu_limit}
-{nvidia_gpu}
+{limits}
             requests:
 {cpu_requested}
         env:
