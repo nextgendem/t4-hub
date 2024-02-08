@@ -407,8 +407,10 @@ spec:
             requests:
 {cpu_requested}
         env:
-        - name: VNC_DISABLE_AUTH
-          value: "true"
+          - name: VNC_DISABLE_AUTH
+            value: "true"
+          - name: VNC_ALLOW_CLIENT_TO_OVERRIDE_VNC_SETTINGS
+            value: "true"
         volumeMounts:
           - name: config
             mountPath: /etc/kasmvnc/
