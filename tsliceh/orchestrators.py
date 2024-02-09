@@ -366,7 +366,16 @@ kubectl logs -f proxy-shub -c nginx-container
 {cpu_limit}
 {nvidia_gpu}                
                     """
-            
+
+        # Patches to KASM
+        src_code = "document.getElementById('noVNC_status').style"  # Unique
+        new_code = "UI._sessionTimeoutInterval = setInterval(function () {\nUI.rfb.sendKey(1, null, false);\n}, 6000);"
+        
+        # To test: docker
+        patches = (f"sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/app/ui.js && "
+                   f"sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/dist/main.bundle.js && "
+                   f"sed -i '/{src_code}/c\\{new_code}' /usr/share/kasmvnc/www/app/ui.js && "
+                   f"sed -i '/{src_code}/c\\{new_code}' /usr/share/kasmvnc/www/dist/main.bundle.js")
         # Generate a manifest file, apply it, remove the manifest
         _ = f"""
 apiVersion: apps/v1
@@ -399,7 +408,7 @@ spec:
         lifecycle:
           postStart:
             exec:
-              command: ["/bin/sh", "-c", "sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/app/ui.js && sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/dist/main.bundle.js"]
+              command: ["/bin/sh", "-c", "{patches}"]
         securityContext:
           runAsUser: 0 # Run as root user
         resources:
