@@ -392,8 +392,8 @@ kubectl logs -f proxy-shub -c nginx-container
         # To test: docker
         patches = (f"sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/app/ui.js && "
                    f"sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/dist/main.bundle.js && "
-                   f"sed -i '/{src_code}/c\\\\{new_code}' /usr/share/kasmvnc/www/app/ui.js && "
-                   f"sed -i '/{src_code}/c\\\\{new_code}' /usr/share/kasmvnc/www/dist/main.bundle.js")
+                   f"sed -i '/{src_code}/c\\{new_code}' /usr/share/kasmvnc/www/app/ui.js && "
+                   f"sed -i '/{src_code}/c\\{new_code}' /usr/share/kasmvnc/www/dist/main.bundle.js")
         patches = escape_for_yaml(patches)
 
         # Generate a manifest file, apply it, remove the manifest
