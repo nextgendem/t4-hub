@@ -380,7 +380,7 @@ kubectl logs -f proxy-shub -c nginx-container
 
         # Patches to KASM
         src_code = escape_for_sed("document.getElementById('noVNC_status').style")  # Unique
-        new_code = escape_for_sed("UI._sessionTimeoutInterval = setInterval(function () {\nUI.rfb.sendKey(1, null, false);\n}, 6000);")
+        new_code = escape_for_sed("UI._sessionTimeoutInterval = setInterval(function () {\\nUI.rfb.sendKey(1, null, false);\\n}, 6000);")
 
         # To test: docker
         patches = (f"sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/app/ui.js && "
