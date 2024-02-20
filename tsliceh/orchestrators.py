@@ -367,10 +367,21 @@ kubectl logs -f proxy-shub -c nginx-container
 {nvidia_gpu}                
                     """
 
+        def escape_for_sed(text):
+            """Escapes special characters in a string for safe use with sed, including single quotes."""
+            # Escaping special characters for sed
+            escape_chars = r"[]\/$*.^&"  # List of special characters to escape
+            escaped_text = re.sub(r'([\[\]\/\$*\.^&])', r'\\\1', text)
+
+            # Escaping single quotes for shell usage
+            escaped_text = escaped_text.replace("'", "'\\''")
+
+            return escaped_text
+
         # Patches to KASM
-        src_code = "document.getElementById('noVNC_status').style"  # Unique
-        new_code = "UI._sessionTimeoutInterval = setInterval(function () {\\nUI.rfb.sendKey(1, null, false);\\n}, 6000);"
-        
+        src_code = escape_for_sed("document.getElementById('noVNC_status').style")  # Unique
+        new_code = escape_for_sed("UI._sessionTimeoutInterval = setInterval(function () {\nUI.rfb.sendKey(1, null, false);\n}, 6000);")
+
         # To test: docker
         patches = (f"sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/app/ui.js && "
                    f"sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/dist/main.bundle.js && "
