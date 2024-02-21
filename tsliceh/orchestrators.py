@@ -367,15 +367,21 @@ kubectl logs -f proxy-shub -c nginx-container
 {nvidia_gpu}                
                     """
 
-        def escape_for_sed(text):
+        def escape_for_sed_origin(text):
             """ Escapes special characters in a string for use with sed, including single quotes. """
             # Escaping special characters for sed
-            escape_chars = r"[]\/$*.^&"  # List of special characters to escape
+            # escape_chars = r"[]\/$*.^&"  # List of special characters to escape
             escaped_text = re.sub(r'([\[\]\/\$*\.^&])', r'\\\1', text)
 
             # Escaping single quotes for shell usage
             escaped_text = escaped_text.replace("'", "'\\''")
 
+            return escaped_text
+
+        def escape_for_sed_replace(text):
+            # Doubling backslashes
+            escaped_text = text.replace("(", "\\(")
+            # Since the string will be in double quotes, no need to escape single quotes
             return escaped_text
 
         def escape_for_yaml(text):
@@ -386,8 +392,8 @@ kubectl logs -f proxy-shub -c nginx-container
             return escaped_text
 
         # Patches to KASM
-        src_code = escape_for_sed("document.getElementById('noVNC_status').style")  # Unique
-        new_code = escape_for_sed("UI._sessionTimeoutInterval = setInterval(function () {UI.rfb.sendKey(1, null, false);}, 6000);")
+        src_code = escape_for_sed_origin("document.getElementById('noVNC_status').style")  # Unique
+        new_code = escape_for_sed_replace("UI._sessionTimeoutInterval = setInterval(function () {UI.rfb.sendKey(1, null, false);}, 6000);")
 
         # To test: docker
         patches = (f"sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/app/ui.js && "
