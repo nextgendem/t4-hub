@@ -1,0 +1,64 @@
+# Comments are provided throughout this file to help you get started.
+# If you need more help, visit the Docker Compose reference guide at
+# https://docs.docker.com/go/compose-spec-reference/
+
+# Here the instructions define your application as a service called "app".
+# This service is built from the Dockerfile in the current directory.
+# You can add other services your application may depend on here, such as a
+# database or a cache. For examples, see the Awesome Compose repository:
+# https://github.com/docker/awesome-compose
+services:
+  oauth2-proxy:
+    build:
+        context: ./oauth2-proxy 
+    ports:
+      - "8080:8080"
+    environment:
+      - OAUTH2_PROXY_PROVIDER=google
+      - OAUTH2_PROXY_CLIENT_ID=301448114319-lpnvs5o0pdf5qcptkbmilpitr81qh8vt.apps.googleusercontent.com
+      - OAUTH2_PROXY_CLIENT_SECRET=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
+      - OAUTH2_PROXY_COOKIE_SECRET=tGYE7TPEmOdGlGZYwfXiCtjvy7mfUPAPRbwwdhUkd2w=
+      - OAUTH2_PROXY_UPSTREAM=http://localhost:5000
+      - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:8080
+    command:
+      - --redirect-url=http://localhost:5000
+      - --email-domain=*
+      - --upstream=http://localhost:5000/oauth2/clean-callback
+  flask:
+   build:
+        context: ./flask
+   ports:
+        - "5000:5000"
+   volumes:
+      - ./data:/app/data
+
+  transformer-t4-vnc:
+    build:
+      context: .
+      args:
+        - DAV_PORT=8085
+    environment:
+      - VNC_DISABLE_AUTH=true
+    
+    user: root
+    shm_size: 512m
+    # depends_on:
+    #   - new-demiurge
+    ports:
+      - "6901:6901"
+      - "8085:8085"
+  transformer-t4-vnc-2:
+    build:
+      context: .
+      args:
+        - DAV_PORT=8086
+    environment:
+      - VNC_DISABLE_AUTH=true
+      - VNC_PORT=6902
+    user: root
+    shm_size: 512m
+    ports:
+      - "6902:6902"
+      - "8086:8086"
+
+
