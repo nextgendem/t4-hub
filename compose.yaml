@@ -9,8 +9,7 @@
 # https://github.com/docker/awesome-compose
 services:
   oauth2-proxy:
-    build:
-        context: ./oauth2-proxy 
+    image: o2-auth/o2-auth 
     ports:
       - "8080:8080"
     environment:
@@ -36,9 +35,11 @@ services:
     build:
       context: .
       args:
+        - USER=vncuser1
         - DAV_PORT=8085
     environment:
       - VNC_DISABLE_AUTH=true
+      - VNC_PW=vncpassword1
     
     user: root
     shm_size: 512m
@@ -51,9 +52,11 @@ services:
     build:
       context: .
       args:
+        - USER=vncuser1
         - DAV_PORT=8086
     environment:
       - VNC_DISABLE_AUTH=true
+      - VNC_PW=vncpassword2
       - VNC_PORT=6902
     user: root
     shm_size: 512m
