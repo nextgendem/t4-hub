@@ -8,6 +8,15 @@
 # database or a cache. For examples, see the Awesome Compose repository:
 # https://github.com/docker/awesome-compose
 services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "6901:6901"
+      - "6902:6902"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf  # Mapea el archivo de configuración     
+    networks:
+      - my_network      
   oauth2-proxy:
     image: o2-auth/o2-auth 
     ports:
@@ -40,14 +49,15 @@ services:
     environment:
       - VNC_DISABLE_AUTH=true
       - VNC_PW=vncpassword1
-    
+    expose:
+      - "6901"
+      - "8085"
+    networks:
+      - my_network
     user: root
     shm_size: 512m
     # depends_on:
     #   - new-demiurge
-    ports:
-      - "6901:6901"
-      - "8085:8085"
   transformer-t4-vnc-2:
     build:
       context: .
@@ -58,10 +68,15 @@ services:
       - VNC_DISABLE_AUTH=true
       - VNC_PW=vncpassword2
       - VNC_PORT=6902
+    networks:
+      - my_network
+    expose:
+      - "6902"
+      - "8086"
     user: root
     shm_size: 512m
-    ports:
-      - "6902:6902"
-      - "8086:8086"
 
+networks:
+  my_network:
+    driver: bridge
 
