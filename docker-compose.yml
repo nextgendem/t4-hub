@@ -16,6 +16,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./proxy/nginx.conf:/app/proxy/nginx.conf
       - 3dslicer-hub-volume:/srv
+    ports:
+      - "8080:8080"
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1 # Prevents Python from writing pyc files to disc (equivalent to
