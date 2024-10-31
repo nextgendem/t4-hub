@@ -34,7 +34,13 @@ CONTAINER_ORCHESTRATOR="docker_compose"
 docker build -t vnc-base https://github.com/OpenDx28/docker-vnc-base.git#:src
 ```
 
-2. Run Docker Compose to start the environment:
+2. Build transformer4 build for each session (need perms, private repository):
+
+```bash
+docker build -t transformer4 --build-arg BASE_IMAGE="vnc-base:latest" https://github.com/nextgendem/t4-novnc
+```
+   
+3. Run Docker Compose to start the environment:
 
 ```bash
 docker-compose up -d
