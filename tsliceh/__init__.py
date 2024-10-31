@@ -28,6 +28,7 @@ class GUID(TypeDecorator):
             return str(value)
         else:
             if not isinstance(value, uuid.UUID):
+                print(value)
                 return "%.32x" % uuid.UUID(value).int
             else:
                 # hexstring
