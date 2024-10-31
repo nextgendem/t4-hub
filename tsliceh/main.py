@@ -70,10 +70,10 @@ proto = os.getenv('PROTO')
 nfs_server = os.getenv('NFS_SERVER')  # Not used. Teide provides NFS mounts directly to all nodes
 ldap_base = "ou=slicerhub,dc=opendx,dc=org"
 co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")
-tdslicer_image_name = "localhost:5000/opendx28/slicer"
+tdslicer_image_name = "transformer4"
 tdslicer_image_tag = "latest"
-tdslicer_image_url = os.getenv("SLICER_IMAGE_DOCKERFILE", "https://github.com/OpenDx28/docker-slicer.git#:src")
-base_vnc_image_name = "localhost:5000/vnc-base"
+tdslicer_image_url = os.getenv("SLICER_IMAGE_DOCKERFILE", "https://github.com/nextgendem/t4-novnc#:src")
+base_vnc_image_name = "vnc-base"
 base_vnc_image_tag = "latest"
 base_vnc_image_url = os.getenv("VNC_BASE_IMAGE_DOCKERFILE", "https://github.com/OpenDx28/docker-vnc-base.git#:src")
 # END CONFIGURATION
@@ -158,7 +158,13 @@ http {{
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;           
+        proxy_set_header X-Forwarded-Proto $scheme;    
+        proxy_http_version 1.1;        
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        add_header Cache-Control no-cache;        
     }}
     
     location /{s.uuid}-files/ {{
@@ -173,17 +179,6 @@ http {{
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme; 
     }}    
-
-    location /{s.uuid}-ws {{
-        proxy_pass http://{s.service_address}/websockify;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        add_header Cache-Control no-cache;
-    }}        
-
 
 """
         _ += f"""
@@ -204,6 +199,7 @@ http {{
         tries = 0
         while tries < 10:
             status = co.get_container_status(nginx_cont_name)
+            print(nginx_cont_name)
             logger.debug(f"NGINX status: {status}\n----------------")
             # TODO Needs better handling of statuses
             if status.lower() == "running":
@@ -211,6 +207,7 @@ http {{
                 if r is None:
                     co.start_base_containers()
                 else:
+                    print(r)
                     return r
             else:
                 await asyncio.sleep(2)
