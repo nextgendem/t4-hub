@@ -472,25 +472,90 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
 <!DOCTYPE html>
 <html>
 <head>
-<title>3DSlicer Sessions:</title>
+<title>T4-Hub Sessions:</title>
 <meta charset="UTF-8">
+<script src="https://www.w3schools.com/lib/w3.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
 <link rel="stylesheet" href="https://www.w3schools.com/lib/w3-theme-black.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
 </head>
 <body id="myPage">
 <!-- Image Header -->
-<div class="w3-display-container w3-animate-opacity">
-  <img src="/static/images/logo_y_titulo_fondo_naranja.png" alt="logo_opendx28" style="width:100%;min-height:350px;max-height:400px;">
-<!--  <div class="w3-container w3-display-bottomleft w3-margin-bottom">
-    <button onclick="document.getElementById('id01').style.display='block'" class="w3-button w3-xlarge w3-theme w3-hover-teal" title="Go To W3.CSS">LEARN W3.CSS</button>
-  </div>-->
-</div>
+<header class="p-2 text-bg-dark">
+    <div class="container">
+      <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
+        <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+          <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+        </a>
+        <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+        <div class="text-end">
+          <a href="#" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
+            <img src="/static/images/user.png" alt="mdo" width="32" height="32" class="rounded-circle">
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+<main class="d-flex flex-nowrap">
+<div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 280px; height: 100vh">
+    <ul class="nav nav-pills flex-column mb-auto">
+      <li class="nav-item">
+        <button id="buttonCreate" href="#" class="nav-link active" aria-current="page" onclick="hideAvailable()">
+          <svg class="bi pe-none me-2" width="16" height="16"><use xlink:href="#home"></use></svg>
+          Create session
+        </button>
+      </li>
+      <li id="availableSelector">
+        <button id="buttonAvailable" href="#" class="nav-link text-white" onclick="hideCreate()">
+          <svg class="bi pe-none me-2" width="16" height="16"><use xlink:href="#speedometer2"></use></svg>
+          Available sessions
+        </button>
+      </li>
+  </div>
+  
+  <div class="w3-display-container w3-animate-opacity">
+    <!--  <div class="w3-container w3-display-bottomleft w3-margin-bottom">
+        <button onclick="document.getElementById('id01').style.display='block'" class="w3-button w3-xlarge w3-theme w3-hover-teal" title="Go To W3.CSS">LEARN W3.CSS</button>
+      </div>-->
+    </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     """
+    for s in sess.query(Session3DSlicer).all():
+            if admin or s.info["shared"]:
+                # Section doing reverse proxy magic
+                if s.info.get('shared_interactive', 0):
+                    _url = s.url_path
+                else:
+                    _url = f"{s.url_path}/?view_only=true"
+                _ += f"""
+                    <script>
+        function hideCreate() {{
+         document.getElementById("createSessions").style.display = "none";
+         document.getElementById("displaySessions").style.display = "block";
+         w3.addClass('#buttonAvailable','active')
+         w3.removeClass('#buttonCreate','active')
+        }}
+        function hideAvailable() {{
+         document.getElementById("displaySessions").style.display = "none";
+         document.getElementById("createSessions").style.display = "block";
+         w3.addClass('#buttonCreate','active')
+         w3.removeClass('#buttonAvailable','active')
+        }}
+    </script>
+    <div id="displaySessions" class="p-3 w3-quarter" style="display: none">
+    <a href="{_url}" target="_blank" rel="noopener noreferrer">
+    <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:23%" class="w3-circle w3-hover-opacity">
+    </a>
+    <h3>{s.user}</h3>
+    <p>CPU [%]: {s.info["CPU_pct"]}</p>
+    <p>(last checked: {s.last_activity})</p>
+    </div>
+    
+        """
     _ += f"""
-    <div class="w3-quarter">
+    <div id="createSessions" class="p-3" styles="display:block">
     <a href="/login" target="_blank" rel="noopener noreferrer">
         <img src="../static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:45%" class="w3-circle w3-hover-opacity">
     </a>    
@@ -498,26 +563,10 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
        <a href="/login" target="_blank" rel="noopener noreferrer">New (or reconnect to) Session {sessions_cont}</a>
        </h3>
     </div>
-
     </body>
+    </main>
         """
-    for s in sess.query(Session3DSlicer).all():
-        if admin or s.info["shared"]:
-            # Section doing reverse proxy magic
-            if s.info.get('shared_interactive', 0):
-                _url = s.url_path
-            else:
-                _url = f"{s.url_path}/?view_only=true"
-            _ += f"""
-<div class="w3-quarter">
-<a href="{_url}" target="_blank" rel="noopener noreferrer">
-<img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:23%" class="w3-circle w3-hover-opacity">
-</a>
-<h3>{s.user}</h3>
-<p>CPU [%]: {s.info["CPU_pct"]}</p>
-<p>(last checked: {s.last_activity})</p>
-</div>
-    """
+    
     if index_path and write_to_file:
         with open(index_path, "wt") as f:
             f.write(_)
