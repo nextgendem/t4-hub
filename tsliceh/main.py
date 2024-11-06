@@ -546,7 +546,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
     </script>
     <div id="displaySessions" class="p-3 w3-quarter" style="display: none">
     <a href="{_url}" target="_blank" rel="noopener noreferrer">
-    <img src="/static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:23%" class="w3-circle w3-hover-opacity">
+    <img src="/static/images/transformer4.png" alt="transformer4image" style="width:23%" class="w3-circle w3-hover-opacity">
     </a>
     <h3>{s.user}</h3>
     <p>CPU [%]: {s.info["CPU_pct"]}</p>
@@ -557,7 +557,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
     _ += f"""
     <div id="createSessions" class="p-3" styles="display:block">
     <a href="/login" target="_blank" rel="noopener noreferrer">
-        <img src="../static/images/3dslicer.png" alt="3dslicerImagesNotFound" style="width:45%" class="w3-circle w3-hover-opacity">
+        <img src="../static/images/transformer4.png" alt="transformer4image" style="width:45%" class="w3-circle w3-hover-opacity">
     </a>    
        <h3>
        <a href="/login" target="_blank" rel="noopener noreferrer">New (or reconnect to) Session {sessions_cont}</a>
