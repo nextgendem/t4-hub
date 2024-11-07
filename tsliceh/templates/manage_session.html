@@ -134,6 +134,16 @@
             <td>{{ s.container_name }}</td>
             <td>{{ s.restart }}</td>
             <td>{{ s.gpu }}</td>
+            <td>
+                <form method="POST" action="/sessions/{{sess_uuid}}/{{s.uuid}}/delete">
+                    <div class="flex items-center justify-between">
+                        <button type="submit"
+                                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                            Delete session {{ s.user }}
+                        </button>
+                    </div>
+                </form>
+            </td>
         </tr>
         {% endfor %}
     </tbody>

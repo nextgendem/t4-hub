@@ -385,7 +385,28 @@ async def get_session_management_page(request: Request, session_id: str):
     session.close()
     return templates.TemplateResponse("manage_session.html", _)
 
-
+@app.post("/sessions/{admin_id}/{session_id}/delete")
+async def close_session_and_container(admin_id,session_id):
+    with db_access_lock:
+        session = orm_session_maker()
+        s = session.query(Session3DSlicer).get(session_id)
+        if s:
+            container_name = CONTAINER_NAME_PREFIX + container_orchestrator.get_valid_name(s.user)
+            status = container_orchestrator.get_container_status(container_name)
+            if status:
+                stop_remove_container(container_name, True)
+                logger.info(f"container {container_name} deleted")
+            logger.info(f"deleting session {s.uuid}")
+            session.delete(s)
+            session.commit()
+            #Update nginx.conf and reread Nginx configuration
+            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+            session.close()
+            return RedirectResponse(url=f"/sessions/{admin_id}", status_code=302)
+        else:
+            session.close()
+            raise Exception(f"cant remove container user expired")
+            
 @app.post("/sessions/{session_id}/share")
 async def share_session(request: Request, session_id: str, interactive: int = 0):
     with db_access_lock:
