@@ -41,6 +41,10 @@ from fastapi.logger import logger
 import logging.config
 import logging
 
+from fastapi.security import OAuth2PasswordBearer
+import requests
+from jose import jwt
+
 # INITIALIZE
 
 app = FastAPI(root_path="")
@@ -275,7 +279,104 @@ async def check_credentials(user, password):
 async def can_open_session(user):
     return True  # TODO LDAP
 
+# Replace these with your own values from the Google Developer Console
+GOOGLE_CLIENT_ID = "301448114319-lpnvs5o0pdf5qcptkbmilpitr81qh8vt.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET = "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"
+GOOGLE_REDIRECT_URI = "http://localhost:8001/oauth2/callback"
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+@app.post("/login/google")
+async def login_google():
+    google_auth_url = (
+        f"https://accounts.google.com/o/oauth2/auth?"
+        f"response_type=code&"
+        f"client_id={GOOGLE_CLIENT_ID}&"
+        f"redirect_uri={GOOGLE_REDIRECT_URI}&"
+        f"scope=openid%20profile%20email&"
+        f"access_type=offline"
+    )
+    return RedirectResponse(url=google_auth_url)
+
+@app.get("/oauth2/callback")
+async def auth_google(code: str):
+    token_url = "https://accounts.google.com/o/oauth2/token"
+    data = {
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
+    response = requests.post(token_url, data=data)
+    access_token = response.json().get("access_token")
+    request_info = requests.get("https://www.googleapis.com/oauth2/v1/userinfo", headers={"Authorization": f"Bearer {access_token}"})
+    user_info = request_info.json()
+
+    username = "free_user_" + user_info["id"]
+    password = "test"
+    if re.match(r".*_gpu$", "free_user_" + user_info["email"]):
+        gpu = True
+    else:
+        gpu = False
+    if await check_credentials(username, password):
+        if await can_open_session(username):
+            with db_access_lock:
+                session = orm_session_maker()
+                container_launched = False
+                try:
+                    s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
+                    if not s:
+                        # Create new session (IF there is room)
+                        cont = count_active_session_containers(session)
+                        if cont < max_sessions:
+                            s = Session3DSlicer()
+                            s.uuid = uuid.uuid4()
+                            s.user = username
+                            s.last_activity = datetime.datetime.now()
+                            s.gpu = gpu
+                            s.url_path = f"/{s.uuid}/"
+                            # Launch new 3d slicer container (it also sets the "container_name" field)
+                            await launch_3dslicer_web_container(s)
+                            container_launched = True
+                            pct = container_orchestrator.get_container_activity(s.container_name)
+                            s.info = {'CPU_pct': pct, 'shared': False}
+                            # Commit new
+                            session.add(s)
+                            session.commit()
+                            # Update nginx.conf and reread Nginx configuration
+                            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+                        else:
+                            return HTMLResponse(content=f"""<!DOCTYPE html>
+                                                            <html>
+                                                              <head>
+                                                                <title>Max number of sessions reached</title>
+                                                              </head>
+                                                              <body>
+                                                              <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
+                                                              </body>
+                                                            </html>""", status_code=401)
+                except exc.SQLAlchemyError as e:
+                    if container_launched:
+                        stop_remove_container(s.container_name)
+                    session.rollback()
+                    raise e
+                finally:
+                    session.close()
+
+            # Redirect to a session management page:
+            return RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
+    else:
+        return HTMLResponse(content="""<!DOCTYPE html>
+                                        <html>
+                                          <head>
+                                            <title>Login Failed</title>
+                                          </head>
+                                          <body>
+                                          <p>Login Failed: Your user ID or password is incorrect</p>
+                                          </body>
+                                        </html>""", status_code=401)
+    
+    
 # Start (or resume) 3DSlicer session
 @app.post("/login")
 async def login(login_form: OAuth2PasswordRequestForm = Depends()):

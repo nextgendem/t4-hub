@@ -34,8 +34,8 @@ RUN curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s 
 
 # COMMON
 RUN pip3 install --no-cache-dir --upgrade pip && \
-    pip3 install --no-cache-dir git+https://github.com/Supervisor/supervisor gunicorn
-
+    pip3 install --no-cache-dir git+https://github.com/Supervisor/supervisor gunicorn && \
+	pip3 install --no-cache-dir python-jose[cryptography]
 WORKDIR /app
 
 RUN mkdir -p /srv
