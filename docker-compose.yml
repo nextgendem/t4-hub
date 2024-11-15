@@ -21,22 +21,6 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1 # Prevents Python from writing pyc files to disc (equivalent to
-  oauth2-proxy:
-    image: o2-auth/o2-auth
-    expose:
-      - "8088"
-    environment:
-      - OAUTH2_PROXY_PROVIDER=google
-      - OAUTH2_PROXY_CLIENT_ID=301448114319-lpnvs5o0pdf5qcptkbmilpitr81qh8vt.apps.googleusercontent.com
-      - OAUTH2_PROXY_CLIENT_SECRET=REDACTED_SECRET
-      - OAUTH2_PROXY_COOKIE_SECRET=REDACTED_SECRET
-      - OAUTH2_PROXY_UPSTREAM=http://localhost:8080
-      - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:8088
-    command:
-      - --redirect-url=http://localhost:8088
-      - --email-domain=*
-      - --upstream=http://localhost:8088/oauth2/clean-callback
-      
   proxy:
     image: opendx/nginx
     container_name: ${NGINX_NAME}
