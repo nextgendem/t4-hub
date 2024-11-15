@@ -280,9 +280,9 @@ async def can_open_session(user):
     return True  # TODO LDAP
 
 # Replace these with your own values from the Google Developer Console
-GOOGLE_CLIENT_ID = "301448114319-lpnvs5o0pdf5qcptkbmilpitr81qh8vt.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET = "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"
-GOOGLE_REDIRECT_URI = "http://localhost:8001/oauth2/callback"
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI')
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 @app.post("/login/google")
