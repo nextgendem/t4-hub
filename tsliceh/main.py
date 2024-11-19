@@ -43,7 +43,13 @@ import logging
 
 from fastapi.security import OAuth2PasswordBearer
 import requests
+from requests.exceptions import RequestException
+
 from jose import jwt
+
+
+
+
 
 # INITIALIZE
 
@@ -297,6 +303,27 @@ async def login_google():
     )
     return RedirectResponse(url=google_auth_url)
 
+# get users from internal server
+def get_user_roles(email, protocol_server=None):
+    if not protocol_server:
+        protocol_server = os.environ.get("NGD_PROTOCOL_SERVER", "https://sys.nextgendem.eu")
+    try:
+        response = requests.get(
+            f"{protocol_server}/api/user_roles",
+            params={'email': email},
+            headers={'Cache-Control': 'no-cache'}
+        )
+        response.raise_for_status()
+    except RequestException as e:
+        print(f"A network error occurred: {e}")
+        return []
+    except requests.exceptions.HTTPError as e:
+        print(f"An HTTP error occurred: {e}")
+        return []
+    else:
+        return response.json()["roles"]
+        
+        
 @app.get("/oauth2/callback")
 async def auth_google(code: str):
     token_url = "https://accounts.google.com/o/oauth2/token"
@@ -310,58 +337,83 @@ async def auth_google(code: str):
     response = requests.post(token_url, data=data)
     access_token = response.json().get("access_token")
     request_info = requests.get("https://www.googleapis.com/oauth2/v1/userinfo", headers={"Authorization": f"Bearer {access_token}"})
+    
     user_info = request_info.json()
+    user_email = user_info["email"]
 
+    if not user_info["verified_email"]:
+        return HTMLResponse(content="""<!DOCTYPE html>
+                                    <html>
+                                      <head>
+                                        <title>Login Failed</title>
+                                      </head>
+                                        <body>
+                                          <p>Login Failed: Email not verified</p>
+                                        </body>
+                                      </html>""", status_code=401)
+            
+    user_roles = get_user_roles(user_email)
+    is_authorized = "transformer-4" in user_roles or "transformer-4" in user_roles
+    if not is_authorized:
+            return HTMLResponse(content="""<!DOCTYPE html>
+                                        <html>
+                                          <head>
+                                            <title>Login Failed</title>
+                                          </head>
+                                          <body>
+                                          <p>Login Failed: Unauthorized</p>
+                                          </body>
+                                        </html>""", status_code=401)
+            
     username = "free_user_" + user_info["id"]
     password = "test"
-    if re.match(r".*_gpu$", "free_user_" + user_info["email"]):
+    if re.match(r".*_gpu$", "free_user_" + user_info["id"]):
         gpu = True
     else:
         gpu = False
-    if await check_credentials(username, password):
-        if await can_open_session(username):
-            with db_access_lock:
-                session = orm_session_maker()
-                container_launched = False
-                try:
-                    s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
-                    if not s:
-                        # Create new session (IF there is room)
-                        cont = count_active_session_containers(session)
-                        if cont < max_sessions:
-                            s = Session3DSlicer()
-                            s.uuid = uuid.uuid4()
-                            s.user = username
-                            s.last_activity = datetime.datetime.now()
-                            s.gpu = gpu
-                            s.url_path = f"/{s.uuid}/"
-                            # Launch new 3d slicer container (it also sets the "container_name" field)
-                            await launch_3dslicer_web_container(s)
-                            container_launched = True
-                            pct = container_orchestrator.get_container_activity(s.container_name)
-                            s.info = {'CPU_pct': pct, 'shared': False}
-                            # Commit new
-                            session.add(s)
-                            session.commit()
-                            # Update nginx.conf and reread Nginx configuration
-                            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
-                        else:
-                            return HTMLResponse(content=f"""<!DOCTYPE html>
-                                                            <html>
-                                                              <head>
-                                                                <title>Max number of sessions reached</title>
-                                                              </head>
-                                                              <body>
-                                                              <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
-                                                              </body>
-                                                            </html>""", status_code=401)
-                except exc.SQLAlchemyError as e:
-                    if container_launched:
-                        stop_remove_container(s.container_name)
+    if await can_open_session(username):
+        with db_access_lock:
+            session = orm_session_maker()
+            container_launched = False
+            try:
+                s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
+                if not s:
+                    # Create new session (IF there is room)
+                    cont = count_active_session_containers(session)
+                    if cont < max_sessions:
+                        s = Session3DSlicer()
+                        s.uuid = uuid.uuid4()
+                        s.user = username
+                        s.last_activity = datetime.datetime.now()
+                        s.gpu = gpu
+                        s.url_path = f"/{s.uuid}/"
+                        # Launch new 3d slicer container (it also sets the "container_name" field)
+                        await launch_3dslicer_web_container(s)
+                        container_launched = True
+                        pct = container_orchestrator.get_container_activity(s.container_name)
+                        s.info = {'CPU_pct': pct, 'shared': False}
+                        # Commit new
+                        session.add(s)
+                        session.commit()
+                        # Update nginx.conf and reread Nginx configuration
+                        await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+                    else:
+                        return HTMLResponse(content=f"""<!DOCTYPE html>
+                                                        <html>
+                                                            <head>
+                                                            <title>Max number of sessions reached</title>
+                                                            </head>
+                                                            <body>
+                                                            <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
+                                                            </body>
+                                                        </html>""", status_code=401)
+            except exc.SQLAlchemyError as e:
+                if container_launched:
+                    stop_remove_container(s.container_name)
                     session.rollback()
-                    raise e
-                finally:
-                    session.close()
+                raise e
+            finally:
+                session.close()
 
             # Redirect to a session management page:
             return RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
