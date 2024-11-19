@@ -276,10 +276,7 @@ async def check_credentials(user, password):
     except LDAPException as e:
         print(e)
         logger.error(e.args)
-        if user.startswith("free_user") and password == "test":
-            return True
-        else:
-            return False
+        return True
 
 
 async def can_open_session(user):
@@ -340,9 +337,41 @@ async def auth_google(code: str):
     
     user_info = request_info.json()
     user_email = user_info["email"]
-
     if not user_info["verified_email"]:
         return HTMLResponse(content="""<!DOCTYPE html>
+                                    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+                                    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+                                            <link rel="preconnect" href="https://fonts.googleapis.com">
+                                            <link rel="preconnect" href="https://fonts.googleapis.com">
+                                            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                                            <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">  
+                                            <style>
+                                                p {
+                                                    font-family: "Open Sans", serif;
+                                                    font-family: "Open Sans", serif;
+                                                      font-optical-sizing: auto;
+                                                      font-weight: <weight>;
+                                                      font-style: normal;
+                                                      font-variation-settings:
+                                                        "wdth" 100;                                                }
+                                            </style>
+                                    <body id="myPage">
+                                    <!-- Image Header -->
+                                    <header class="p-2 text-bg-dark">
+                                        <div class="container">
+                                          <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
+                                            <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+                                              <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+                                            </a>
+                                            <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+                                            <div class="text-end">
+                                              <a href="#" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
+                                                <img src="/static/images/user.png" alt="mdo" width="32" height="32" class="rounded-circle">
+                                              </a>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </header>
                                     <html>
                                       <head>
                                         <title>Login Failed</title>
@@ -356,6 +385,87 @@ async def auth_google(code: str):
     is_authorized = "transformer-4" in user_roles or "transformer-4" in user_roles
     if not is_authorized:
             return HTMLResponse(content="""<!DOCTYPE html>
+                                        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+                                        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+                                            <link rel="preconnect" href="https://fonts.googleapis.com">
+                                            <link rel="preconnect" href="https://fonts.googleapis.com">
+                                            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                                            <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">  
+                                            <style>
+                                                header {
+                                                    z-index: 10
+                                                }
+                                                p {
+                                                    animation-duration: 3s;
+                                                    animation-name: slidein;
+                                                    font-family: "Open Sans", serif;
+                                                      font-optical-sizing: auto;
+                                                      font-weight: bold;
+                                                      font-style: normal;
+                                                      font-variation-settings:
+                                                        "wdth" 100;
+                                                    text-align: center;
+                                                    font-size: 20px;
+                                                    padding-top: 200px;
+                                                }
+                                                
+                                                use{
+                                                  animation:move-forever 2s linear infinite;
+                                                  &:nth-child(2){ animation-duration:2.5s; animation-delay:-1.5s; }
+                                                  &:nth-child(1){ animation-duration:5s}
+                                                }
+
+                                                @keyframes move-forever{
+                                                   0%{transform: translate(-2px , 0)}
+                                                 100%{transform: translate( 0px , 0)} 
+                                                }
+
+
+                                                /* layout only*/
+                                                svg{
+                                                z-index: -10;
+                                                bottom: 0;
+                                                left: 0;
+                                                position: fixed;
+                                                width: 100%;
+                                                }
+                                                
+                                                @keyframes slidein {
+                                                  from {
+                                                    transform: translate(0,-150%);
+                                                  }
+
+                                                  to {
+                                                    transform: translate(0,0%);
+                                                  }
+                                                }
+                                                @keyframes transform {
+                                                  from {
+                                                    height: 200%;
+                                                  }
+
+                                                  to {
+                                                    height: 50%;
+                                                  }
+                                                }
+                                            </style>
+                                        <body id="myPage">
+                                        <!-- Image Header -->
+                                        <header class="p-2 text-bg-dark">                                 
+                                            <div class="container">
+                                              <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
+                                                <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+                                                  <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+                                                </a>
+                                                <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+                                                <div class="text-end">
+                                                  <a href="#" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
+                                                    <img src="/static/images/user.png" alt="mdo" width="32" height="32" class="rounded-circle">
+                                                  </a>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </header>
                                         <html>
                                           <head>
                                             <title>Login Failed</title>
@@ -363,11 +473,27 @@ async def auth_google(code: str):
                                           <body>
                                           <p>Login Failed: Unauthorized</p>
                                           </body>
+                                          <svg 
+                                             viewBox="0 0 2 1" 
+                                             preserveAspectRatio="none">
+                                              <defs>
+                                                <path id="w" 
+                                                  d="
+                                                  m0 1v-.5 
+                                                  q.5.5 1 0
+                                                  t1 0 1 0 1 0
+                                                  v.5z" />
+                                              </defs>
+                                              <g>
+                                               <use href="#w" y=".0" fill="#2d55aa" />
+                                               <use href="#w" y=".1" fill="#2B4375" />
+                                               <use href="#w" y=".2" fill="#26344F" />
+                                              </g>
+                                             </svg>
                                         </html>""", status_code=401)
             
-    username = "free_user_" + user_info["id"]
-    password = "test"
-    if re.match(r".*_gpu$", "free_user_" + user_info["id"]):
+    username = user_info["id"]
+    if re.match(r".*_gpu$", user_info["id"]):
         gpu = True
     else:
         gpu = False
@@ -399,6 +525,7 @@ async def auth_google(code: str):
                         await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
                     else:
                         return HTMLResponse(content=f"""<!DOCTYPE html>
+
                                                         <html>
                                                             <head>
                                                             <title>Max number of sessions reached</title>
@@ -419,6 +546,38 @@ async def auth_google(code: str):
             return RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
     else:
         return HTMLResponse(content="""<!DOCTYPE html>
+                                        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+                                            <link rel="preconnect" href="https://fonts.googleapis.com">
+                                            <link rel="preconnect" href="https://fonts.googleapis.com">
+                                            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                                            <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">  
+                                            <style>
+                                                p {
+                                                    font-family: "Open Sans", serif;
+                                                    font-family: "Open Sans", serif;
+                                                      font-optical-sizing: auto;
+                                                      font-weight: <weight>;
+                                                      font-style: normal;
+                                                      font-variation-settings:
+                                                        "wdth" 100;                                                }
+                                            </style>
+                                        <body id="myPage">
+                                        <!-- Image Header -->
+                                        <header class="p-2 text-bg-dark">
+                                            <div class="container">
+                                              <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
+                                                <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+                                                  <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+                                                </a>
+                                                <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+                                                <div class="text-end">
+                                                  <a href="#" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
+                                                    <img src="/static/images/user.png" alt="mdo" width="32" height="32" class="rounded-circle">
+                                                  </a>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </header>
                                         <html>
                                           <head>
                                             <title>Login Failed</title>
