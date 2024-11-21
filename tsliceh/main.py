@@ -126,7 +126,7 @@ elif co_str == "kubernetes":
     logger.debug(f"===================\nLOGGER: {logger}\n=========================")
 
 container_orchestrator = container_orchestrator_factory(co_str)
-tdslicerhub_adress = get_container_internal_address(container_orchestrator, os.getenv("TDSLICERHUB_NAME"), network_id) \
+tdslicerhub_adress = get_container_internal_address(container_orchestrator, os.getenv("T4HUB_HAME"), network_id) \
     if os.getenv("MODE") != "local" else domain
 
 
@@ -510,6 +510,7 @@ async def auth_google(code: str):
                         s = Session3DSlicer()
                         s.uuid = uuid.uuid4()
                         s.user = username
+                        s.email = user_info["email"]
                         s.last_activity = datetime.datetime.now()
                         s.gpu = gpu
                         s.url_path = f"/{s.uuid}/"
@@ -611,6 +612,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                             s = Session3DSlicer()
                             s.uuid = uuid.uuid4()
                             s.user = username
+                            s.email = "none"
                             s.last_activity = datetime.datetime.now()
                             s.gpu = gpu
                             s.url_path = f"/{s.uuid}/"
@@ -668,10 +670,14 @@ async def get_session_management_page(request: Request, session_id: str):
                  sess_uuid=session_id,
                  sess_link=f"",
                  files_link=f"",
+                 sess_email="Not email found",
                  sess_user="Session ID not found",
                  sess_shared="Session ID not found")
     else:
-        if s.user == "free_user_admin":
+        user_rol = get_user_roles(s.email)
+        # check if it's admin or not
+        is_admin = "sys-admin" in user_rol or "sys-admin" in user_rol
+        if is_admin:
             for _ in session.query(Session3DSlicer).all():
                 d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
                 lst.append(d)
@@ -683,6 +689,7 @@ async def get_session_management_page(request: Request, session_id: str):
                  sess_link=s.url_path,
                  files_link=f"/{s.uuid}-files/",
                  sess_user=s.user,
+                 sess_email=s.email,
                  sess_shared=s.info['shared'])
     # n = 0
     # while True:

@@ -56,6 +56,7 @@ class Session3DSlicer(SQLAlchemyBase):
     created_at = Column(DateTime, default=datetime.datetime.now())
     last_activity = Column(DateTime, nullable=True)
     user = Column(String(64), unique=True, nullable=False)
+    email = Column(String(64), unique=True, nullable=False)
     url_path = Column(String(1024), nullable=True)
     service_address = Column(String(1024), nullable=True)
     container_name = Column(String(128), nullable=True)
