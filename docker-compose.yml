@@ -9,7 +9,7 @@ services:
 
   t4-hub:
     image: opendx/t4hub
-    container_name: ${T4HUB_HAME}
+    container_name: ${T4HUB_NAME}
     build:
       context: .
     volumes:

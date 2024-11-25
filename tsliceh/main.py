@@ -127,7 +127,7 @@ elif co_str == "kubernetes":
     logger.debug(f"===================\nLOGGER: {logger}\n=========================")
 
 container_orchestrator = container_orchestrator_factory(co_str)
-tdslicerhub_adress = get_container_internal_address(container_orchestrator, os.getenv("T4HUB_HAME"), network_id) \
+tdslicerhub_adress = get_container_internal_address(container_orchestrator, os.getenv("T4HUB_NAME"), network_id) \
     if os.getenv("MODE") != "local" else domain
 
 
