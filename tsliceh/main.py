@@ -43,6 +43,7 @@ import logging
 
 from fastapi.security import OAuth2PasswordBearer
 import requests
+
 from requests.exceptions import RequestException
 
 from jose import jwt
@@ -544,7 +545,9 @@ async def auth_google(code: str):
                 session.close()
 
             # Redirect to a session management page:
-            return RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
+            response = RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
+            response.set_cookie(key="source", value=s.uuid)
+            return response
     else:
         return HTMLResponse(content="""<!DOCTYPE html>
                                         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
@@ -644,7 +647,6 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 finally:
                     session.close()
 
-            # Redirect to a session management page:
             return RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
     else:
         return HTMLResponse(content="""<!DOCTYPE html>
@@ -660,6 +662,20 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
 
 @app.get("/sessions/{session_id}")
 async def get_session_management_page(request: Request, session_id: str):
+    
+    source = request.cookies.get("source", "unknown")
+    
+    if source != session_id:
+        return HTMLResponse(content="""<!DOCTYPE html>
+                                        <html>
+                                          <head>
+                                            <title>Login Failed</title>
+                                          </head>
+                                          <body>
+                                          <p>Access not authorized</p>
+                                          </body>
+                                        </html>""", status_code=401)
+                                        
     session = orm_session_maker()
     s = session.query(Session3DSlicer).get(session_id)
     lst = []
