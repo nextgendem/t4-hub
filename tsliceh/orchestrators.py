@@ -733,7 +733,7 @@ def containers_status(name_id):
     """
     Check if a container exist is running or exited or in case just created it waits until creation period is over
     :param name_id:
-    :return: None, "runnung" or "exited
+    :return: None, "running" or "exited
     """
     dc = docker.from_env()
     try:

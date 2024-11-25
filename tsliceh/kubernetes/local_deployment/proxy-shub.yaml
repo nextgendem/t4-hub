@@ -34,7 +34,7 @@ metadata:
   name: proxy-shub
   labels:
     app: shub
-    # Label used by get_container_ip. The value is defined in "env" with T4HUB_HAME variable
+    # Label used by get_container_ip. The value is defined in "env" with T4HUB_NAME variable
     app-user: t4hub-transformer4-hub
 spec:
   # Force master-node (TEIDE HPC)
