@@ -17,7 +17,6 @@ import re
 import sys
 import uuid
 
-from jinja2 import Template
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, Request, Depends
@@ -133,42 +132,89 @@ tdslicerhub_adress = get_container_internal_address(container_orchestrator, os.g
 
 
 async def refresh_nginx(co: IContainerOrchestrator, sess, nginx_cfg_path, domainn, tds_address):
-
     def generate_nginx_conf():
         """ For each session, generate a section, plus the first part """
-        if not all([domainn, tds_address, nginx_cfg_path]):
-            raise ValueError("Essential values are missing to generate the Nginx configuration.")
+        # "nginx.conf" prefix
+        _ = f"""
+user www-data;
+
+events {{
+}}
+
+http {{
+  sub_filter_types text/html text/css application/javascript;
+  log_format custom '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$uri" "$http_x_forwarded_for" "$request_filename"';
+  server {{
+    listen     80;
+    server_name  {domainn};
+    access_log /var/log/nginx/access2.log custom;
+    error_log  /var/log/nginx/error2.log  debug;
+
+    location / {{
+      proxy_pass http://{tds_address};
+      proxy_connect_timeout 300s;
+      proxy_read_timeout 600s;      
+    }}
+    """
+        # Variable length section, for each location
+        if sess:
+            for s in sess.query(Session3DSlicer).all():
+                # Section doing reverse proxy magic
+                _ += f"""
+
+    location /{s.uuid}/ {{
+        proxy_pass http://{s.service_address}/;          
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;    
+        proxy_http_version 1.1;        
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        add_header Cache-Control no-cache;        
+    }}
+    
+    location /{s.uuid}-files/ {{
+        proxy_pass http://{s.other_address}/;
+        sub_filter 'href="/'  'href="/{s.uuid}-files/';
+        sub_filter 'src="/'  'src="/{s.uuid}-files/';
+        sub_filter_once off;
+
+        proxy_set_header Host $host;
+        client_max_body_size 100M;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme; 
+    }}    
+
+"""
+        _ += f"""
+  }}
+}}
+"""
         print(":::::::::::::::::::::::::::: CREATING NEW NGINX FILE :::::::::::::::::::::::::::::::::::::::::")
-        with open(nginx_cfg_path.replace('nginx.conf', 'nginx_template.conf'), 'r') as nginx_template:
-            template = Template(nginx_template.read())
-            nginx_conf = template.render(domain=domainn, tds_address=tds_address,
-                                         sessions=sess.query(Session3DSlicer).all() if sess else [])
-        print(nginx_conf)
+        print(_)
         if nginx_cfg_path:
             with open(nginx_cfg_path, "wt") as f:
-                f.write(nginx_conf)
+                f.write(_)
 
-    def validate_nginx_conf():
-        result = co.execute_cmd_in_nginx_container(nginx_container_name, "/etc/init.d/nginx -t -c " + nginx_cfg_path)
-        if result is None:
-            co.start_base_containers()
-            raise RuntimeError(f"Error in Nginx configuration: validate_nginx_conf")
-        else:
-            print(result)
-            return result
-
-    async def command_nginx_to_read_configuration():
+    async def command_nginx_to_read_configuration(nginx_cont_name):
         """
         Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
         command it to reread the configuration.
         """
         tries = 0
         while tries < 10:
-            status = co.get_container_status(nginx_container_name)
+            status = co.get_container_status(nginx_cont_name)
+            print(nginx_cont_name)
             logger.debug(f"NGINX status: {status}\n----------------")
             # TODO Needs better handling of statuses
             if status.lower() == "running":
-                r = co.execute_cmd_in_nginx_container(nginx_container_name, "/etc/init.d/nginx reload")
+                r = co.execute_cmd_in_nginx_container(nginx_cont_name, "/etc/init.d/nginx reload")
                 if r is None:
                     co.start_base_containers()
                 else:
@@ -181,8 +227,7 @@ async def refresh_nginx(co: IContainerOrchestrator, sess, nginx_cfg_path, domain
     # -----------------------------------------------
 
     generate_nginx_conf()
-    validate_nginx_conf()
-    await command_nginx_to_read_configuration()
+    await command_nginx_to_read_configuration(nginx_container_name)
 
 
 asyncio.run(refresh_nginx(container_orchestrator, None, nginx_config_path, domain, tdslicerhub_adress))
@@ -212,11 +257,6 @@ async def index_page():
 
 
 @app.get("/")
-async def user_index_page():
-    return RedirectResponse(url=f"index.html")
-
-
-@app.get("/login")
 async def welcome_and_login_page(request: Request):
     # Jinja2 template with login page
     _ = dict(request=request)
