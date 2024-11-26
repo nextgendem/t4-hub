@@ -20,7 +20,8 @@ services:
       - "8080:8080"
     environment:
       - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE=1 # Prevents Python from writing pyc files to disc (equivalent to
+      - PYTHONDONTWRITEBYTECODE=1
+
   proxy:
     image: opendx/nginx
     container_name: ${NGINX_NAME}
