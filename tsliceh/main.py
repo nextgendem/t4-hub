@@ -318,7 +318,7 @@ def get_user_roles(email, protocol_server=None):
         
         
 @app.get("/oauth2/callback")
-async def auth_google(code: str):
+async def auth_google(code: str,request: Request):
     token_url = "https://accounts.google.com/o/oauth2/token"
     data = {
         "code": code,
@@ -378,7 +378,13 @@ async def auth_google(code: str):
                                       </html>""", status_code=401)
             
     user_roles = get_user_roles(user_email)
-    is_authorized = "transformer-4" in user_roles or "transformer-4" in user_roles
+    is_authorized = "transformer4-admin" in user_roles or "sys-admin" in user_roles
+
+    is_guest = "transformer4-guest" in user_roles
+    if is_guest:
+      _ = dict(request=request)
+      return RedirectResponse(url=f"/index.html", status_code=302)
+    
     if not is_authorized:
             return HTMLResponse(content="""<!DOCTYPE html>
                                         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
@@ -687,7 +693,7 @@ async def get_session_management_page(request: Request, session_id: str):
     else:
         user_rol = get_user_roles(s.email)
         # check if it's admin or not
-        is_admin = "sys-admin" in user_rol or "sys-admin" in user_rol
+        is_admin = "sys-admin" in user_rol or "transformer4-admin" in user_rol 
         if is_admin:
             for _ in session.query(Session3DSlicer).all():
                 d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
@@ -712,8 +718,14 @@ async def get_session_management_page(request: Request, session_id: str):
     #     await time.sleep(1)
     #     n = + 1
 
-    session.close()
-    return templates.TemplateResponse("manage_session.html", _)
+    with db_access_lock:
+        session = orm_session_maker()
+        r = HTMLResponse(content=refresh_manage_session_html(lst,session_id, session, proto=proto, admin=False, write_to_file=False),
+                            status_code=200)
+        print("Respuesta:" + str(r))
+        session.close()
+        return r
+    #return templates.TemplateResponse("manage_session.html", _)
 
 @app.post("/sessions/{admin_id}/{session_id}/delete")
 async def close_session_and_container(admin_id,session_id):
@@ -732,6 +744,8 @@ async def close_session_and_container(admin_id,session_id):
             #Update nginx.conf and reread Nginx configuration
             await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
             session.close()
+            if admin_id == session_id:
+                return RedirectResponse(url="/", status_code=302)
             return RedirectResponse(url=f"/sessions/{admin_id}", status_code=302)
         else:
             session.close()
@@ -851,14 +865,8 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
 <main class="d-flex flex-nowrap">
 <div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 280px; height: 100vh">
     <ul class="nav nav-pills flex-column mb-auto">
-      <li class="nav-item">
-        <button id="buttonCreate" href="#" class="nav-link active" aria-current="page" onclick="hideAvailable()">
-          <svg class="bi pe-none me-2" width="16" height="16"><use xlink:href="#home"></use></svg>
-          Create session
-        </button>
-      </li>
       <li id="availableSelector">
-        <button id="buttonAvailable" href="#" class="nav-link text-white" onclick="hideCreate()">
+        <button id="buttonAvailable" href="#" class="nav-link text-white active" onclick="hideCreate()">
           <svg class="bi pe-none me-2" width="16" height="16"><use xlink:href="#speedometer2"></use></svg>
           Available sessions
         </button>
@@ -881,20 +889,211 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
                 else:
                     _url = f"{s.url_path}/?view_only=true"
                 _ += f"""
-                    <script>
+    <div id="displaySessions" class="p-3 w3-quarter">
+    <a href="{_url}" target="_blank" rel="noopener noreferrer">
+    <img src="/static/images/transformer4.png" alt="transformer4image" style="width:23%" class="w3-circle w3-hover-opacity">
+    </a>
+    <h3>{s.user}</h3>
+    <p>CPU [%]: {s.info["CPU_pct"]}</p>
+    <p>(last checked: {s.last_activity})</p>
+    </div>
+    """
+    
+    if index_path and write_to_file:
+        with open(index_path, "wt") as f:
+            f.write(_)
+        logger.info(f"index.html re-written")
+
+    return _
+
+def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, write_to_file=True):
+    s_local = sess.query(Session3DSlicer).get(sess_uuid)
+    if not s_local:
+        _ = f"""
+        <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+          Sesión desconectada
+        </a>
+        """
+        return _
+    user_rol = get_user_roles(s_local.email)
+    if max_sessions < 1000:
+        cont = count_active_session_containers(sess)
+        sessions_cont = f"({cont}/{max_sessions})"
+    else:
+        sessions_cont = ""
+
+    _ = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="5">
+    <title>Login</title>
+    <script src="https://www.w3schools.com/lib/w3.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/twinklecss@1.1.0/twinkle.min.css"/>
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <script>
+        function openUrl(url, title) {{
+            if (!title) {{
+                title = 'Just another window';
+            }}
+            let x = window.open(url, title, 'toolbar=1,location=1,directories=1,status=1,menubar=1,scrollbars=1,resizable=1');
+            x.blur();
+            x.close();
+            window.open(url, title, 'toolbar=1,location=1,directories=1,status=1,menubar=1,scrollbars=1,resizable=1');
+        }}
+    </script>
+    <style>
+        table {{
+            border-collapse: collapse;
+            border: 1px solid black;
+        }}
+        th, td {{
+            border: 1px solid black;
+        }}
+    </style>
+</head>
+<!-- Image Header -->
+<header class="p-2 text-bg-dark">
+    <div class="container">
+      <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
+        <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+          <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+        </a>
+        <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+        <div class="text-end">
+          <a href="#" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
+            <img src="/static/images/user.png" alt="mdo" width="32" height="32" class="rounded-circle">
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+<main class="d-flex flex-nowrap">
+<div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 280px; height: 100vh">
+    <ul class="nav nav-pills flex-column mb-auto">
+    """
+    # check if it's admin or not
+    is_admin = "transformer4-admin" in user_rol or "sys-admin" in user_rol
+    if is_admin:
+      _ += f"""
+      <li class="nav-item">
+        <button id="buttonCreate" href="#" class="nav-link active" aria-current="page" onclick="hideAvailable()">
+          My session
+        </button>
+      </li>
+      """
+
+    _ += f"""
+      <li id="availableSelector">
+        <button id="buttonAvailable" href="#" class="nav-link text-white" onclick="hideCreate()">
+          Available sessions
+        </button>
+      </li>
+  </div>
+    """ 
+
+    if is_admin:
+      _ += f"""
+<div class="d-flex flex-column px-6 m-2 justify-center align-items-center" id="showSessions">
+    """
+    else:
+         _ += f"""
+<div class="d-none d-flex flex-column px-6 m-2 justify-center align-items-center" id="showSessions">
+    """
+    _ += f"""
+    <div class="flex p-4 m-6 justify-center">
+        <h1 class="block text-gray-700 text-m font-bold mb-2">T4-Hub - Session</h1>
+    </div>
+    <div class="d-flex bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+        <div class="d-flex flex-column mb-2 mx-3 justify-center align-items-center"">
+		<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="currentColor" class="bi bi-display" viewBox="0 0 16 16">
+		  <path d="M0 4s0-2 2-2h12s2 0 2 2v6s0 2-2 2h-4q0 1 .25 1.5H11a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1h.75Q6 13 6 12H2s-2 0-2-2zm1.398-.855a.76.76 0 0 0-.254.302A1.5 1.5 0 0 0 1 4.01V10c0 .325.078.502.145.602q.105.156.302.254a1.5 1.5 0 0 0 .538.143L2.01 11H14c.325 0 .502-.078.602-.145a.76.76 0 0 0 .254-.302 1.5 1.5 0 0 0 .143-.538L15 9.99V4c0-.325-.078-.502-.145-.602a.76.76 0 0 0-.302-.254A1.5 1.5 0 0 0 13.99 3H2c-.325 0-.502.078-.602.145"/>
+		</svg>
+            <label class="block text-sm blue-500 hover:blue-700 mb-2">
+                <a onclick="openUrl('{s_local.url_path}', 'Slicer')" href="#" >Access Transformer4 - {s_local.user}</a>
+            </label>
+        </div>
+        <div class="d-flex flex-column mb-2 mx-3 justify-center align-items-center"">
+			<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="currentColor" class="bi bi-folder" viewBox="0 0 16 16">
+			  <path d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31zM2.19 4a1 1 0 0 0-.996 1.09l.637 7a1 1 0 0 0 .995.91h10.348a1 1 0 0 0 .995-.91l.637-7A1 1 0 0 0 13.81 4zm4.69-1.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139q.323-.119.684-.12h5.396z"/>
+			</svg>
+            <label class="block text-sm blue-500 hover:blue-700 mb-2">
+                <a onclick="openUrl('{f"/{s_local.uuid}-files/"}', 'File manager')" href="#" >Access File Manager - {s_local.user}</a>
+            </label>
+        </div>
+    </div>
+    <form class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" method="POST" action="/sessions/{sess_uuid}/close">
+        <div class="flex items-center justify-between">
+            <button type="submit"
+                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Close session
+            </button>
+        </div>
+    </form>
+"""
+    print("sess_shared: " + str(s_local.info['shared']))
+    if not s_local.info['shared']:
+        _ += f"""
+    <div class="flex p-4 m-6 justify-center">
+        <form class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" method="POST" action="/sessions/{sess_uuid}/share?interactive=0">
+            <div class="flex items-center justify-between">
+                <button type="submit"
+                        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                    Share session URL (view-only)
+                </button>
+            </div>
+        </form>
+        <form class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" method="POST" action="/sessions/{sess_uuid}/share?interactive=1">
+            <div class="flex items-center justify-between">
+                <button type="submit"
+                        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                    Share session URL (interactive)
+                </button>
+            </div>
+        </form>
+    </div>
+    """
+    else:
+      _ += f"""
+    <div class="flex p-4 m-6 justify-center">
+        <form class="bg-white shadow-md rounded px-8 pt-6 pb-4 mb-2" method="POST" action="/sessions/{sess_uuid}/unshare">
+            <div class="flex items-center justify-between">
+                <button type="submit"
+                        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                    Unshare session
+                </button>
+            </div>
+        </form>
+    </div>
+    """
+    _ += f"""
+    <script>
         function hideCreate() {{
-         document.getElementById("createSessions").style.display = "none";
          document.getElementById("displaySessions").style.display = "block";
+         w3.addClass('#showSessions','d-none')
          w3.addClass('#buttonAvailable','active')
          w3.removeClass('#buttonCreate','active')
         }}
         function hideAvailable() {{
          document.getElementById("displaySessions").style.display = "none";
-         document.getElementById("createSessions").style.display = "block";
+         w3.removeClass('#showSessions','d-none')
          w3.addClass('#buttonCreate','active')
          w3.removeClass('#buttonAvailable','active')
         }}
     </script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    """
+    for s in sess.query(Session3DSlicer).all():
+            if admin or s.info["shared"]:
+                # Section doing reverse proxy magic
+                if s.info.get('shared_interactive', 0):
+                    _url = s.url_path
+                else:
+                    _url = f"{s.url_path}/?view_only=true"
+                _ += f"""
     <div id="displaySessions" class="p-3 w3-quarter" style="display: none">
     <a href="{_url}" target="_blank" rel="noopener noreferrer">
     <img src="/static/images/transformer4.png" alt="transformer4image" style="width:23%" class="w3-circle w3-hover-opacity">
@@ -905,26 +1104,52 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
     </div>
     
         """
-    _ += f"""
-    <div id="createSessions" class="p-3" styles="display:block">
-    <a href="/login" target="_blank" rel="noopener noreferrer">
-        <img src="../static/images/transformer4.png" alt="transformer4image" style="width:45%" class="w3-circle w3-hover-opacity">
-    </a>    
-       <h3>
-       <a href="/login" target="_blank" rel="noopener noreferrer">New (or reconnect to) Session {sessions_cont}</a>
-       </h3>
-    </div>
-    </body>
-    </main>
-        """
+            if is_admin:
+              _ +=  f"""
+<div class="flex p-4 m-6 justify-center">
+<table>
+    <thead>
+        <tr>
+            <th>UUID</th>
+            <th>Creation</th>
+            <th>Last activity</th>
+            <th>User</th>
+            <th>Container</th>
+            <th>Restart</th>
+            <th>GPU</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>{ s.uuid }</td>
+            <td>{ s.created_at }</td>
+            <td>{ s.last_activity }</td>
+            <td>{ s.user }</td>
+            <td>{ s.container_name }</td>
+            <td>{ s.restart }</td>
+            <td>{ s.gpu }</td>
+            <td>
+                <form method="POST" action="/sessions/{sess_uuid}/{s.uuid}/delete">
+                    <div class="flex items-center justify-between">
+                        <button type="submit"
+                                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                            Delete session { s.user }
+                        </button>
+                    </div>
+                </form>
+            </td>
+        </tr>
+    </tbody>
+</table>
+</div>
+</div>
+    """
     
     if index_path and write_to_file:
         with open(index_path, "wt") as f:
             f.write(_)
         logger.info(f"index.html re-written")
-
     return _
-
 
 async def launch_3dslicer_web_container(s: Session3DSlicer):
     """
