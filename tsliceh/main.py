@@ -693,7 +693,7 @@ async def get_session_management_page(request: Request, session_id: str):
     else:
         user_rol = get_user_roles(s.email)
         # check if it's admin or not
-        is_admin = "sys-admin" in user_rol or "transformer4-admin" in user_rol 
+        is_admin = "sys-admin" in user_rol
         if is_admin:
             for _ in session.query(Session3DSlicer).all():
                 d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
@@ -976,6 +976,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, wr
     """
     # check if it's admin or not
     is_admin = "transformer4-admin" in user_rol or "sys-admin" in user_rol
+    is_super_admin = "sys-admin" in user_rol
     if is_admin:
       _ += f"""
       <li class="nav-item">
@@ -1104,7 +1105,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, wr
     </div>
     
         """
-            if is_admin:
+            if is_super_admin:
               _ +=  f"""
 <div class="flex p-4 m-6 justify-center">
 <table>
