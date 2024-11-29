@@ -1086,6 +1086,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, wr
     </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+</div>
     """
     for s in sess.query(Session3DSlicer).all():
             if admin or s.info["shared"]:
@@ -1095,19 +1096,19 @@ def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, wr
                 else:
                     _url = f"{s.url_path}/?view_only=true"
                 _ += f"""
-    <div id="displaySessions" class="p-3 w3-quarter" style="display: none">
-    <a href="{_url}" target="_blank" rel="noopener noreferrer">
-    <img src="/static/images/transformer4.png" alt="transformer4image" style="width:23%" class="w3-circle w3-hover-opacity">
-    </a>
-    <h3>{s.user}</h3>
-    <p>CPU [%]: {s.info["CPU_pct"]}</p>
-    <p>(last checked: {s.last_activity})</p>
-    </div>
-    
+    <div class="flex p-4 m-6 justify-center">
+        <div id="displaySessions" class="p-3 w3-quarter" style="display: none">
+        <a href="{_url}" target="_blank" rel="noopener noreferrer">
+        <img src="/static/images/transformer4.png" alt="transformer4image" style="width:23%" class="w3-circle w3-hover-opacity">
+        </a>
+        <h3>{s.user}</h3>
+        <p>CPU [%]: {s.info["CPU_pct"]}</p>
+        <p>(last checked: {s.last_activity})</p>
+        </div>
         """
             if is_super_admin:
               _ +=  f"""
-<div class="flex p-4 m-6 justify-center">
+
 <table>
     <thead>
         <tr>
@@ -1143,6 +1144,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, wr
     </tbody>
 </table>
 </div>
+</main>
 </div>
     """
     
