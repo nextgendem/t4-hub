@@ -361,8 +361,8 @@ async def auth_google(code: str,request: Request):
                                             </a>
                                             <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
                                             <div class="text-end">
-                                              <a href="#" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
-                                                <img src="/static/images/user.png" alt="mdo" width="32" height="32" class="rounded-circle">
+                                              <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+                                              <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">
                                               </a>
                                             </div>
                                           </div>
@@ -461,8 +461,8 @@ async def auth_google(code: str,request: Request):
                                                 </a>
                                                 <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
                                                 <div class="text-end">
-                                                  <a href="#" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
-                                                    <img src="/static/images/user.png" alt="mdo" width="32" height="32" class="rounded-circle">
+                                                  <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+                                                  <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">
                                                   </a>
                                                 </div>
                                               </div>
@@ -576,8 +576,8 @@ async def auth_google(code: str,request: Request):
                                                 </a>
                                                 <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
                                                 <div class="text-end">
-                                                  <a href="#" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
-                                                    <img src="/static/images/user.png" alt="mdo" width="32" height="32" class="rounded-circle">
+                                                  <a href="https://demiurge.nextgendem.eu/" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
+                                                    <img src="/static/images/logo_demiurge.png" alt="mdo" width="32" height="32" class="rounded-circle">
                                                   </a>
                                                 </div>
                                               </div>
@@ -855,8 +855,8 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
         </a>
         <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
         <div class="text-end">
-          <a href="#" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
-            <img src="/static/images/user.png" alt="mdo" width="32" height="32" class="rounded-circle">
+          <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+            <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">
           </a>
         </div>
       </div>
@@ -963,8 +963,8 @@ def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, wr
         </a>
         <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
         <div class="text-end">
-          <a href="#" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
-            <img src="/static/images/user.png" alt="mdo" width="32" height="32" class="rounded-circle">
+          <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+            <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">
           </a>
         </div>
       </div>
