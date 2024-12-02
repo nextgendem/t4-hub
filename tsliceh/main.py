@@ -1037,7 +1037,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
     """
     # check if it's admin or not
     is_admin = "transformer4-admin" in user_rol or "sys-admin" in user_rol
-    is_super_admin = "sys-admin" in user_rol
+    is_super_admin = "transformer4-admin" in user_rol
     if is_admin:
       if page == "main":
         _ += f"""
@@ -1111,19 +1111,23 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
     </div>
     <div class="d-flex bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
         <div class="d-flex flex-column mb-2 mx-3 justify-center align-items-center"">
-		<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="currentColor" class="bi bi-display" viewBox="0 0 16 16">
-		  <path d="M0 4s0-2 2-2h12s2 0 2 2v6s0 2-2 2h-4q0 1 .25 1.5H11a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1h.75Q6 13 6 12H2s-2 0-2-2zm1.398-.855a.76.76 0 0 0-.254.302A1.5 1.5 0 0 0 1 4.01V10c0 .325.078.502.145.602q.105.156.302.254a1.5 1.5 0 0 0 .538.143L2.01 11H14c.325 0 .502-.078.602-.145a.76.76 0 0 0 .254-.302 1.5 1.5 0 0 0 .143-.538L15 9.99V4c0-.325-.078-.502-.145-.602a.76.76 0 0 0-.302-.254A1.5 1.5 0 0 0 13.99 3H2c-.325 0-.502.078-.602.145"/>
-		</svg>
             <label class="block text-sm blue-500 hover:blue-700 mb-2">
-                <a onclick="openUrl('{s_local.url_path}', 'Slicer')" href="#" >Access Transformer4 - {s_local.user}</a>
+                <a onclick="openUrl('{s_local.url_path}', 'Slicer')" href="#" class="d-flex flex-column align-items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="black" class="bi bi-display" viewBox="0 0 16 16">
+		            <path d="M0 4s0-2 2-2h12s2 0 2 2v6s0 2-2 2h-4q0 1 .25 1.5H11a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1h.75Q6 13 6 12H2s-2 0-2-2zm1.398-.855a.76.76 0 0 0-.254.302A1.5 1.5 0 0 0 1 4.01V10c0 .325.078.502.145.602q.105.156.302.254a1.5 1.5 0 0 0 .538.143L2.01 11H14c.325 0 .502-.078.602-.145a.76.76 0 0 0 .254-.302 1.5 1.5 0 0 0 .143-.538L15 9.99V4c0-.325-.078-.502-.145-.602a.76.76 0 0 0-.302-.254A1.5 1.5 0 0 0 13.99 3H2c-.325 0-.502.078-.602.145"/>
+		            </svg>
+                    <p>Access Transformer4 - {s_local.user}</p>
+                </a>
             </label>
         </div>
         <div class="d-flex flex-column mb-2 mx-3 justify-center align-items-center"">
-			<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="currentColor" class="bi bi-folder" viewBox="0 0 16 16">
-			  <path d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31zM2.19 4a1 1 0 0 0-.996 1.09l.637 7a1 1 0 0 0 .995.91h10.348a1 1 0 0 0 .995-.91l.637-7A1 1 0 0 0 13.81 4zm4.69-1.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139q.323-.119.684-.12h5.396z"/>
-			</svg>
             <label class="block text-sm blue-500 hover:blue-700 mb-2">
-                <a onclick="openUrl('{f"/{s_local.uuid}-files/"}', 'File manager')" href="#" >Access File Manager - {s_local.user}</a>
+                <a onclick="openUrl('{f"/{s_local.uuid}-files/"}', 'File manager')" href="#" class="d-flex flex-column align-items-center">
+            		<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="black" class="bi bi-folder" viewBox="0 0 16 16">
+			           <path d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31zM2.19 4a1 1 0 0 0-.996 1.09l.637 7a1 1 0 0 0 .995.91h10.348a1 1 0 0 0 .995-.91l.637-7A1 1 0 0 0 13.81 4zm4.69-1.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139q.323-.119.684-.12h5.396z"/>
+			        </svg>
+                    <p>Access File Manager - {s_local.user}</p>
+                </a>
             </label>
         </div>
     </div>
@@ -1192,9 +1196,48 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
     </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-</div>
     """
     for s in sess.query(Session3DSlicer).all():
+            if is_super_admin:
+              _ +=  f"""
+
+<table>
+    <thead>
+        <tr>
+            <th>UUID</th>
+            <th>Creation</th>
+            <th>Last activity</th>
+            <th>User</th>
+            <th>Email</th>
+            <th>Container</th>
+            <th>Restart</th>
+            <th>GPU</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>{ s.uuid }</td>
+            <td>{ s.created_at }</td>
+            <td>{ s.last_activity }</td>
+            <td>{ s.user }</td>
+            <td>{ s.email }</td>
+            <td>{ s.container_name }</td>
+            <td>{ s.restart }</td>
+            <td>{ s.gpu }</td>
+            <td>
+                <form method="POST" action="/sessions/{sess_uuid}/{s.uuid}/delete">
+                    <div class="flex items-center justify-between">
+                        <button type="submit"
+                                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                            Delete session { s.user }
+                        </button>
+                    </div>
+                </form>
+            </td>
+        </tr>
+    </tbody>
+    </table>
+    """
             if admin or s.info["shared"]:
                 # Section doing reverse proxy magic
                 if s.info.get('shared_interactive', 0):
@@ -1202,6 +1245,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
                 else:
                     _url = f"{s.url_path}/?view_only=true"
                 _ += f"""
+    </div>
     <div class="flex p-4 m-6 justify-center">
     """
                 if page != "main":
@@ -1220,49 +1264,9 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
         <p>CPU [%]: {s.info["CPU_pct"]}</p>
         <p>(last checked: {s.last_activity})</p>
         </div>
+    </main>
+    </div>
         """
-            if is_super_admin:
-              _ +=  f"""
-
-<table>
-    <thead>
-        <tr>
-            <th>UUID</th>
-            <th>Creation</th>
-            <th>Last activity</th>
-            <th>User</th>
-            <th>Container</th>
-            <th>Restart</th>
-            <th>GPU</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td>{ s.uuid }</td>
-            <td>{ s.created_at }</td>
-            <td>{ s.last_activity }</td>
-            <td>{ s.user }</td>
-            <td>{ s.container_name }</td>
-            <td>{ s.restart }</td>
-            <td>{ s.gpu }</td>
-            <td>
-                <form method="POST" action="/sessions/{sess_uuid}/{s.uuid}/delete">
-                    <div class="flex items-center justify-between">
-                        <button type="submit"
-                                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                            Delete session { s.user }
-                        </button>
-                    </div>
-                </form>
-            </td>
-        </tr>
-    </tbody>
-</table>
-</div>
-</main>
-</div>
-    """
-    
     if index_path and write_to_file:
         with open(index_path, "wt") as f:
             f.write(_)
