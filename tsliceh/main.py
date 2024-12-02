@@ -546,7 +546,7 @@ async def auth_google(code: str,request: Request):
                 session.close()
 
             # Redirect to a session management page:
-            response = RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
+            response = RedirectResponse(url=f"/sessions/{s.uuid}?page=main", status_code=302)
             response.set_cookie(key="source", value=s.uuid)
             return response
     else:
@@ -648,7 +648,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 finally:
                     session.close()
 
-            return RedirectResponse(url=f"/sessions/{s.uuid}", status_code=302)
+            return RedirectResponse(url=f"/sessions/{s.uuid}?page=main", status_code=302)
     else:
         return HTMLResponse(content="""<!DOCTYPE html>
                                         <html>
@@ -660,12 +660,9 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                                           </body>
                                         </html>""", status_code=401)
 
-
-@app.get("/sessions/{session_id}")
-async def get_session_management_page(request: Request, session_id: str):
-    
+@app.post("/sessions/{session_id}")
+async def get_session_management_page(request: Request, session_id: str, page):
     source = request.cookies.get("source", "unknown")
-    
     if source != session_id:
         return HTMLResponse(content="""<!DOCTYPE html>
                                         <html>
@@ -720,7 +717,71 @@ async def get_session_management_page(request: Request, session_id: str):
 
     with db_access_lock:
         session = orm_session_maker()
-        r = HTMLResponse(content=refresh_manage_session_html(lst,session_id, session, proto=proto, admin=False, write_to_file=False),
+        r = HTMLResponse(content=refresh_manage_session_html(lst,session_id, session,page, proto=proto, admin=False, write_to_file=False),
+                            status_code=200)
+        print("Respuesta:" + str(r))
+        session.close()
+        return r
+    
+@app.get("/sessions/{session_id}")
+async def get_session_management_page(request: Request, session_id: str, page):
+    
+    source = request.cookies.get("source", "unknown")
+    if source != session_id:
+        return HTMLResponse(content="""<!DOCTYPE html>
+                                        <html>
+                                          <head>
+                                            <title>Login Failed</title>
+                                          </head>
+                                          <body>
+                                          <p>Access not authorized</p>
+                                          </body>
+                                        </html>""", status_code=401)
+                                        
+    session = orm_session_maker()
+    s = session.query(Session3DSlicer).get(session_id)
+    lst = []
+    if s is None:
+        _ = dict(request=request,
+                 url_base="",
+                 sessions_list=lst,
+                 sess_uuid=session_id,
+                 sess_link=f"",
+                 files_link=f"",
+                 sess_email="Not email found",
+                 sess_user="Session ID not found",
+                 sess_shared="Session ID not found")
+    else:
+        user_rol = get_user_roles(s.email)
+        # check if it's admin or not
+        is_admin = "sys-admin" in user_rol
+        if is_admin:
+            for _ in session.query(Session3DSlicer).all():
+                d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
+                lst.append(d)
+
+        _ = dict(request=request,
+                 url_base="",
+                 sessions_list=lst,
+                 sess_uuid=session_id,
+                 sess_link=s.url_path,
+                 files_link=f"/{s.uuid}-files/",
+                 sess_user=s.user,
+                 sess_email=s.email,
+                 sess_shared=s.info['shared'])
+    # n = 0
+    # while True:
+    #     container_status = container_orchestrator.get_container_status(s.container_name)
+    #     if container_status == "Status: Running":
+    #         break
+    #     if n == 10:
+    #         container_status = "can't initiate 3dSlicer"
+    #     await time.sleep(1)
+    #     n = + 1
+
+    with db_access_lock:
+        session = orm_session_maker()
+        r = HTMLResponse(content=refresh_manage_session_html(lst,session_id, session,page, proto=proto, admin=False, write_to_file=False),
                             status_code=200)
         print("Respuesta:" + str(r))
         session.close()
@@ -746,7 +807,7 @@ async def close_session_and_container(admin_id,session_id):
             session.close()
             if admin_id == session_id:
                 return RedirectResponse(url="/", status_code=302)
-            return RedirectResponse(url=f"/sessions/{admin_id}", status_code=302)
+            return RedirectResponse(url=f"/sessions/{admin_id}?page=main", status_code=302)
         else:
             session.close()
             raise Exception(f"cant remove container user expired")
@@ -763,7 +824,7 @@ async def share_session(request: Request, session_id: str, interactive: int = 0)
             session.add(s)
             session.commit()
             session.close()
-            return RedirectResponse(url=f"/sessions/{session_id}", status_code=302)
+            return RedirectResponse(url=f"/sessions/{session_id}?page=main", status_code=302)
         else:
             session.close()
             return HTMLResponse(content="""<!DOCTYPE html>
@@ -788,7 +849,7 @@ async def unshare_session(request: Request, session_id: str):
             session.add(s)
             session.commit()
             session.close()
-            return RedirectResponse(url=f"/sessions/{session_id}", status_code=302)
+            return RedirectResponse(url=f"/sessions/{session_id}?page=main", status_code=302)
         else:
             session.close()
             return HTMLResponse(content="""<!DOCTYPE html>
@@ -906,7 +967,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
 
     return _
 
-def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, write_to_file=True):
+def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=True, write_to_file=True):
     s_local = sess.query(Session3DSlicer).get(sess_uuid)
     if not s_local:
         _ = f"""
@@ -928,7 +989,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, wr
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="5">
+    <meta http-equiv="refresh" content="50">
     <title>Login</title>
     <script src="https://www.w3schools.com/lib/w3.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/twinklecss@1.1.0/twinkle.min.css"/>
@@ -978,24 +1039,65 @@ def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, wr
     is_admin = "transformer4-admin" in user_rol or "sys-admin" in user_rol
     is_super_admin = "sys-admin" in user_rol
     if is_admin:
-      _ += f"""
+      if page == "main":
+        _ += f"""
       <li class="nav-item">
         <button id="buttonCreate" href="#" class="nav-link active" aria-current="page" onclick="hideAvailable()">
           My session
         </button>
       </li>
-      """
-
-    _ += f"""
       <li id="availableSelector">
         <button id="buttonAvailable" href="#" class="nav-link text-white" onclick="hideCreate()">
           Available sessions
         </button>
       </li>
-  </div>
+      """
+      else:
+        _ += f"""
+      <li class="nav-item">
+        <button id="buttonCreate" href="#" class="nav-link" aria-current="page" onclick="hideAvailable()">
+          My session
+        </button>
+      </li><li id="availableSelector">
+        <button id="buttonAvailable" href="#" class="nav-link text-white active" onclick="hideCreate()">
+          Available sessions
+        </button>
+      </li>
+      """
+    if page == "main":
+        _ += f"""
+      <form action="/sessions/{sess_uuid}?page=main" method="POST" id="mainRefresh" style="display: block">
+      <button type="submit"
+                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Refresh session
+      </button>
+      </form>
+      <form action="/sessions/{sess_uuid}?page=sessions" method="POST" id="sessionRefresh" style="display: none">
+      <button type="submit"
+                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Refresh session
+      </button>
+      </form>"""
+    else:
+        _ += f"""
+        <form action="/sessions/{sess_uuid}?page=main" method="POST" id="mainRefresh" style="display: none">
+      <button type="submit"
+                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Refresh session
+      </button>
+      </form>
+      <form action="/sessions/{sess_uuid}?page=sessions" method="POST" id="sessionRefresh" style="display: block">
+      <button type="submit"
+                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Refresh session
+      </button>
+      </form>"""
+        
+    _ += f"""
+        </div>
     """ 
 
-    if is_admin:
+    if page == "main":
       _ += f"""
 <div class="d-flex flex-column px-6 m-2 justify-center align-items-center" id="showSessions">
     """
@@ -1073,12 +1175,16 @@ def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, wr
     <script>
         function hideCreate() {{
          document.getElementById("displaySessions").style.display = "block";
+         document.getElementById("mainRefresh").style.display = "none";
+         document.getElementById("sessionRefresh").style.display = "block";
          w3.addClass('#showSessions','d-none')
          w3.addClass('#buttonAvailable','active')
          w3.removeClass('#buttonCreate','active')
         }}
         function hideAvailable() {{
          document.getElementById("displaySessions").style.display = "none";
+         document.getElementById("sessionRefresh").style.display = "none";
+        document.getElementById("mainRefresh").style.display = "block";
          w3.removeClass('#showSessions','d-none')
          w3.addClass('#buttonCreate','active')
          w3.removeClass('#buttonAvailable','active')
@@ -1097,7 +1203,16 @@ def refresh_manage_session_html(lst,sess_uuid,sess, proto="http", admin=True, wr
                     _url = f"{s.url_path}/?view_only=true"
                 _ += f"""
     <div class="flex p-4 m-6 justify-center">
+    """
+                if page != "main":
+                    _+=f"""
+        <div id="displaySessions" class="p-3 w3-quarter" style="display: block">
+        """
+                else:
+                    _+=f"""
         <div id="displaySessions" class="p-3 w3-quarter" style="display: none">
+        """
+                _ += f"""
         <a href="{_url}" target="_blank" rel="noopener noreferrer">
         <img src="/static/images/transformer4.png" alt="transformer4image" style="width:23%" class="w3-circle w3-hover-opacity">
         </a>
