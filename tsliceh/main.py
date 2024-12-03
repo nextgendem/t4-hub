@@ -284,6 +284,9 @@ GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI')
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+# Authentication with Google, redirects to /oauth2/callback
+# Redirect Uri needs to be allowed in Google Cloud Platform
+
 @app.post("/login/google")
 async def login_google():
     google_auth_url = (
@@ -297,6 +300,9 @@ async def login_google():
     return RedirectResponse(url=google_auth_url)
 
 # get users from internal server
+# important to get roles of main platform (such as transformer4-guest, sys-admin,...)
+# main parameter: email
+
 def get_user_roles(email, protocol_server=None):
     if not protocol_server:
         protocol_server = os.environ.get("NGD_PROTOCOL_SERVER", "https://sys.nextgendem.eu")
@@ -316,6 +322,10 @@ def get_user_roles(email, protocol_server=None):
     else:
         return response.json()["roles"]
         
+# Main verification of user via Google Authentication
+# returns user_info[] (["email"],["username"],["verified_email"])
+# Also creates the session (ID: Google User ID) if it's autenthicated
+# Redirects to other function with the HTML responses
         
 @app.get("/oauth2/callback")
 async def auth_google(code: str,request: Request):
@@ -592,8 +602,10 @@ async def auth_google(code: str,request: Request):
                                           </body>
                                         </html>""", status_code=401)
     
-    
 # Start (or resume) 3DSlicer session
+# OBSOLETE: Login via form
+# ID = username
+
 @app.post("/login")
 async def login(login_form: OAuth2PasswordRequestForm = Depends()):
     username = login_form.username
@@ -660,6 +672,10 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                                           </body>
                                         </html>""", status_code=401)
 
+# HTML Responses main hub
+# View of the user's session and other sessions
+# Works only when refreshing, not possible (nor recreated) in app.get
+
 @app.post("/sessions/{session_id}")
 async def get_session_management_page(request: Request, session_id: str, page):
     source = request.cookies.get("source", "unknown")
@@ -722,7 +738,10 @@ async def get_session_management_page(request: Request, session_id: str, page):
         print("Respuesta:" + str(r))
         session.close()
         return r
-    
+
+# HTML Responses main hub
+# View of the user's session and other sessions
+
 @app.get("/sessions/{session_id}")
 async def get_session_management_page(request: Request, session_id: str, page):
     
@@ -788,6 +807,9 @@ async def get_session_management_page(request: Request, session_id: str, page):
         return r
     #return templates.TemplateResponse("manage_session.html", _)
 
+# NOT USED
+# Delete session from this database (only sys-admin)
+
 @app.post("/sessions/{admin_id}/{session_id}/delete")
 async def close_session_and_container(admin_id,session_id):
     with db_access_lock:
@@ -811,7 +833,11 @@ async def close_session_and_container(admin_id,session_id):
         else:
             session.close()
             raise Exception(f"cant remove container user expired")
-            
+
+# Share button
+# Has variable ?interactive= (0 for only view, 1 for interact)
+# Makes de session visible to users with transformer4-admin / sys-admin roles
+
 @app.post("/sessions/{session_id}/share")
 async def share_session(request: Request, session_id: str, interactive: int = 0):
     with db_access_lock:
@@ -837,6 +863,8 @@ async def share_session(request: Request, session_id: str, interactive: int = 0)
                                               </body>
                                             </html>""", status_code=404)
 
+# Unshare button
+# Removes session visibility from other users
 
 @app.post("/sessions/{session_id}/unshare")
 async def unshare_session(request: Request, session_id: str):
@@ -862,6 +890,7 @@ async def unshare_session(request: Request, session_id: str):
                                               </body>
                                             </html>""", status_code=404)
 
+# Deletes user sessions (via same user, or super admin)
 
 @app.post("/sessions/{session_id}/close")
 async def close_session_and_container(session_id):
@@ -885,6 +914,12 @@ async def close_session_and_container(session_id):
             session.close()
             raise Exception(f"cant remove container user expired")
 
+# HTML of session
+# Main page, redirected from Google Auth HTML 
+# Views of the user management session page and see available session page
+# Visibilty changes from different roles
+# transfomer4-admin (admin) -> Manage/See sessions
+# sys-admin (super-admin) -> + (from manage session) see session properties of other sessions and can delete sessions
 
 def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
 
@@ -924,7 +959,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
     </div>
   </header>
 <main class="d-flex flex-nowrap">
-<div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 280px; height: 100vh">
+<div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 200px; min-height: 100vh; max-height: auto">
     <ul class="nav nav-pills flex-column mb-auto">
       <li id="availableSelector">
         <button id="buttonAvailable" href="#" class="nav-link text-white active" onclick="hideCreate()">
@@ -1032,12 +1067,41 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
     </div>
   </header>
 <main class="d-flex flex-nowrap">
-<div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 280px; height: 100vh">
+<div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 200px;min-height: 100vh; max-height: auto">
     <ul class="nav nav-pills flex-column mb-auto">
     """
     # check if it's admin or not
     is_admin = "transformer4-admin" in user_rol or "sys-admin" in user_rol
-    is_super_admin = "transformer4-admin" in user_rol
+    is_super_admin = "sys-admin" in user_rol
+    if page == "main":
+        _ += f"""
+      <form action="/sessions/{sess_uuid}?page=main" method="POST" id="mainRefresh" style="display: block">
+      <button type="submit"
+                    class="mb-3 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Refresh session
+      </button>
+      </form>
+      <form action="/sessions/{sess_uuid}?page=sessions" method="POST" id="sessionRefresh" style="display: none">
+      <button type="submit"
+                    class="mb-3 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Refresh session
+      </button>
+      </form>"""
+    else:
+        _ += f"""
+        <form action="/sessions/{sess_uuid}?page=main" method="POST" id="mainRefresh" style="display: none">
+      <button type="submit"
+                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Refresh session
+      </button>
+      </form>
+      <form action="/sessions/{sess_uuid}?page=sessions" method="POST" id="sessionRefresh" style="display: block">
+      <button type="submit"
+                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Refresh session
+      </button>
+      </form>"""
+        
     if is_admin:
       if page == "main":
         _ += f"""
@@ -1064,42 +1128,14 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
         </button>
       </li>
       """
-    if page == "main":
-        _ += f"""
-      <form action="/sessions/{sess_uuid}?page=main" method="POST" id="mainRefresh" style="display: block">
-      <button type="submit"
-                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                Refresh session
-      </button>
-      </form>
-      <form action="/sessions/{sess_uuid}?page=sessions" method="POST" id="sessionRefresh" style="display: none">
-      <button type="submit"
-                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                Refresh session
-      </button>
-      </form>"""
-    else:
-        _ += f"""
-        <form action="/sessions/{sess_uuid}?page=main" method="POST" id="mainRefresh" style="display: none">
-      <button type="submit"
-                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                Refresh session
-      </button>
-      </form>
-      <form action="/sessions/{sess_uuid}?page=sessions" method="POST" id="sessionRefresh" style="display: block">
-      <button type="submit"
-                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                Refresh session
-      </button>
-      </form>"""
-        
+
     _ += f"""
         </div>
     """ 
 
     if page == "main":
       _ += f"""
-<div class="d-flex flex-column px-6 m-2 justify-center align-items-center" id="showSessions">
+<div class="d-flex flex-column px-6 m-2 justify-center align-items-center" id="showSessions" style="max-width:85%">
     """
     else:
          _ += f"""
