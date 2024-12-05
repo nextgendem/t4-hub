@@ -30,13 +30,13 @@ from starlette.responses import RedirectResponse, HTMLResponse
 
 import ldap3
 from ldap3.core.exceptions import LDAPException
-from tsliceh import create_session_factory, create_local_orm, Session3DSlicer, create_tables, get_ldap_address, \
+from t4hub import create_session_factory, create_local_orm, Session3DSlicer, create_tables, get_ldap_address, \
     get_domain_name
-from tsliceh.gunicorn_config import lock
+from t4hub.gunicorn_config import lock
 from contextlib import nullcontext
-from tsliceh.orchestrators import create_docker_network, IContainerOrchestrator, container_orchestrator_factory
-from tsliceh.volumes import create_all_volumes, volume_dict
-from tsliceh.helpers import get_container_internal_address
+from t4hub.orchestrators import create_docker_network, IContainerOrchestrator, container_orchestrator_factory
+from t4hub.volumes import create_all_volumes, volume_dict
+from t4hub.helpers import get_container_internal_address
 from fastapi.logger import logger
 import logging.config
 import logging
@@ -247,10 +247,10 @@ def count_active_session_containers(sess):
 
 # Welcome & login page
 @app.get("/index.html")
-async def index_page():
+async def index_page(id : str = "0"):
     with db_access_lock:
         session = orm_session_maker()
-        r = HTMLResponse(content=refresh_index_html(session, proto=proto, admin=False, write_to_file=False),
+        r = HTMLResponse(content=refresh_index_html(session,id, proto=proto, admin=False, write_to_file=False),
                             status_code=200)
         session.close()
         return r
@@ -921,7 +921,7 @@ async def close_session_and_container(session_id):
 # transfomer4-admin (admin) -> Manage/See sessions
 # sys-admin (super-admin) -> + (from manage session) see session properties of other sessions and can delete sessions
 
-def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
+def refresh_index_html(sess,id, proto="http", admin=True, write_to_file=True):
 
     if max_sessions < 1000:
         cont = count_active_session_containers(sess)
@@ -950,6 +950,16 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
           <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
         </a>
         <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+        """
+    if id != "0":
+        _ += f"""
+                <select id="rolViewChange" class="form-select mr-2" style="max-width: 15vh" onchange="this.options[this.selectedIndex].value && (window.location = this.options[this.selectedIndex].value);">
+                    <option value="/sessions/{id}?page=main">Admin</option>
+                    <option selected value="/index.html?id={id}">Guest</option>
+                </select>
+            """
+
+    _ += """
         <div class="text-end">
           <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
             <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">
@@ -959,7 +969,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
     </div>
   </header>
 <main class="d-flex flex-nowrap">
-<div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 200px; min-height: 100vh; max-height: auto">
+<div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 250px; min-height: 100vh; max-height: auto">
     <ul class="nav nav-pills flex-column mb-auto">
       <li id="availableSelector">
         <button id="buttonAvailable" href="#" class="nav-link text-white active" onclick="hideCreate()">
@@ -993,6 +1003,7 @@ def refresh_index_html(sess, proto="http", admin=True, write_to_file=True):
     <p>CPU [%]: {s.info["CPU_pct"]}</p>
     <p>(last checked: {s.last_activity})</p>
     </div>
+    </main>
     """
     
     if index_path and write_to_file:
@@ -1058,6 +1069,10 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
           <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
         </a>
         <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+        <select id="rolViewChange" class="form-select mr-2" style="max-width: 15vh" onchange="this.options[this.selectedIndex].value && (window.location = this.options[this.selectedIndex].value);">
+            <option selected value="/sessions/{sess_uuid}?page=main">Admin</option>
+            <option value="/index.html?id={sess_uuid}">Guest</option>
+        </select>
         <div class="text-end">
           <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
             <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">

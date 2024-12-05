@@ -99,7 +99,7 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
 
 def get_ldap_address(mode, openldap_name, net_id):
     if mode == "container":
-        from tsliceh.orchestrators import get_container_ip
+        from t4hub.orchestrators import get_container_ip
         ldap_adress = get_container_ip(openldap_name, net_id) + ":389"
     else:
         ldap_adress = "localhost:389"
