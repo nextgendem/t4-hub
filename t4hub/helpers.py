@@ -1,6 +1,6 @@
 import os
 
-from tsliceh.orchestrators import IContainerOrchestrator
+from t4hub.orchestrators import IContainerOrchestrator
 
 
 def container_exists(name_id):

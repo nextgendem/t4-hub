@@ -54,7 +54,7 @@ CMD ["supervisord", "-c", "/etc/supervisord.conf"]
 
 EXPOSE 8080
 
-COPY tsliceh_local.env /app/.env
+COPY t4hub_local.env /app/.env
 COPY users /app/user
 COPY proxy /app/proxy
-COPY tsliceh /app/tsliceh
+COPY t4hub /app/t4hub

@@ -25,7 +25,7 @@ Requirements:
 
 Docker must be correctly installed
 
-__!!! Make sure the file `tsliceh_local.env` contains the variable:__
+__!!! Make sure the file `t4hub_local.env` contains the variable:__
 CONTAINER_ORCHESTRATOR="docker_compose"
 
 1. Build the VNC version of Transformer-4 used for each session:
@@ -98,7 +98,7 @@ docker push localhost:5000/opendx28/slicer
 ```bash
 minikube start
 cd /path/to/your/project/t4-hub
-kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete -f t4hub/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
 ```
@@ -107,7 +107,7 @@ eval $(minikube docker-env)
 
 ```bash
 eval $(minikube docker-env --unset)
-kubectl apply -f /path/to/your/project/t4-hub/tsliceh/kubernetes/tdsh.yaml
+kubectl apply -f /path/to/your/project/t4-hub/t4hub/kubernetes/tdsh.yaml
 ```
 
 ### Running in a Private Cluster
@@ -117,7 +117,7 @@ kubectl apply -f /path/to/your/project/t4-hub/tsliceh/kubernetes/tdsh.yaml
 3. Apply Manifests:
 
 ```bash
-kubectl apply -f /path/to/your/project/t4-hub/tsliceh/kubernetes/teide_tdsh.yaml
+kubectl apply -f /path/to/your/project/t4-hub/t4hub/kubernetes/teide_tdsh.yaml
 ```
 
 Note that in this development environment case, the `imagePullPolicy` in the pod manifest must be set to __Always__ to get the new image each time it is built.

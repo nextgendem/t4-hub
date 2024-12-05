@@ -1,4 +1,4 @@
-from tsliceh.orchestrators import IContainerOrchestrator
+from t4hub.orchestrators import IContainerOrchestrator
 
 vol_dict = {"cache_apt": "/var/cache/apt", # este tieme que ser borrado periodicamente? realmente lo necesito??
             # "tmpfiles": "/tmp", # todo parece que da problemas cuando le pongo ese volumen... quizás podría hacer que se destruya siembre
@@ -20,7 +20,7 @@ def volume_dict(user):
         d.update({f"{user}_{k}": {"bind": v, "mode": "rw"}})  # modes??
     # now Slicer.ini is not modifiable by the user... this is a kind of general configuration
     # TODO CREATE A {USER_ID} SLICER.INI (managing persistence)
-    # from tsliceh.main import slicer_ini
+    # from t4hub.main import slicer_ini
     # d.update({slicer_ini: {"bind": "/home/researcher/.config/NA-MIC/Slicer.ini", "mode": "ro"}
     #           })
     return d

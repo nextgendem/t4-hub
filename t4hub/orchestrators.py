@@ -221,22 +221,22 @@ class Kubernetes(IContainerOrchestrator):
 START
 minikube start
 cd /home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub
-kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete -f t4hub/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
 docker build -t localhost:5000/opendx28/tslicerh . (like that the image will work with registry like in production)
 docker run -d -p 5000:5000 --restart=always --name registry registry:2
 docker push localhost:5000/opendx28/tslicerh 
  eval $(minikube docker-env --unset)
-kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+kubectl apply -f t4hub/kubernetes/tdsh.yaml
 
 DEPLOY / REDEPLOY
-kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete -f t4hub/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
 docker build -t opendx28/tslicerh .
  eval $(minikube docker-env --unset)
-kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+kubectl apply -f t4hub/kubernetes/tdsh.yaml
 kubectl logs -f proxy-shub
 
 DEBUGGING
@@ -249,27 +249,27 @@ kubectl logs -f proxy-shub -c nginx-container
 URL OF THE SERVICE
 minikube service my-service --url
 
-kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete -f t4hub/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
 docker build -t opendx/tslicerh .
 minikube image load opendx/tslicerh
-kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+kubectl apply -f t4hub/kubernetes/tdsh.yaml
 minikube service my-service --url
 kubectl logs -f proxy-shub -c 3dslicer-hub
 
-kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete -f t4hub/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
-kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+kubectl apply -f t4hub/kubernetes/tdsh.yaml
 minikube service my-service --url
 kubectl logs -f proxy-shub -c 3dslicer-hub
 
-kubectl delete -f tsliceh/kubernetes/tdsh.yaml
-kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete -f t4hub/kubernetes/tdsh.yaml
+kubectl apply -f t4hub/kubernetes/tdsh.yaml
 kubectl logs -f proxy-shub -c nginx-container
 
-kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+kubectl delete -f t4hub/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
-kubectl apply -f tsliceh/kubernetes/tdsh.yaml
+kubectl apply -f t4hub/kubernetes/tdsh.yaml
 kubectl logs -f proxy-shub -c nginx-container
 
     """
@@ -697,7 +697,7 @@ def docker_container_pct_activity(container_id_name):
     try:
         c = dc.containers.get(container_id_name)
         stats = container_stats(c.id)
-        from tsliceh.helpers import calculate_cpu_percent
+        from t4hub.helpers import calculate_cpu_percent
         return calculate_cpu_percent(stats)
     except:
         return -1
@@ -770,7 +770,7 @@ def create_image(image_name, image_tag):
         print(f"image {image_full_name} already in the system")
         return
     if image_full_name.startswith("opendx"):
-        from tsliceh.main import (tdslicer_image_name, tdslicer_image_url,
+        from t4hub.main import (tdslicer_image_name, tdslicer_image_url,
                                   base_vnc_image_name, base_vnc_image_url,  base_vnc_image_tag)
         base_vnc_image_full_name = f"{base_vnc_image_name}:{base_vnc_image_tag}"
         if base_vnc_image_full_name not in tags:
