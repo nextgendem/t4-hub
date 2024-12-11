@@ -8,12 +8,12 @@ from dotenv import load_dotenv
 
 from fastapi.testclient import TestClient
 import asyncio
-from tsliceh.main import app, orm_session_maker, allowed_inactivity_time_in_seconds
-from tsliceh import Session3DSlicer
+from t4hub.main import app, orm_session_maker, allowed_inactivity_time_in_seconds
+from t4hub import Session3DSlicer
 import pytest
 import os
 import logging
-from tsliceh.main import CONTAINER_NAME_PREFIX
+from t4hub.main import CONTAINER_NAME_PREFIX
 data = {"username": "free_user", "password": "test"}
 
 
@@ -131,7 +131,7 @@ def test_restart_session():
     pass
 
 def test_create_volume(client):
-    from tsliceh.volumes import volume_dict, vol_dict
+    from t4hub.volumes import volume_dict, vol_dict
     test_launch_container(client)
     dc = docker.from_env()
     volumes = volume_dict(data["username"])

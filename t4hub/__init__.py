@@ -28,6 +28,7 @@ class GUID(TypeDecorator):
             return str(value)
         else:
             if not isinstance(value, uuid.UUID):
+                print(value)
                 return "%.32x" % uuid.UUID(value).int
             else:
                 # hexstring
@@ -55,6 +56,7 @@ class Session3DSlicer(SQLAlchemyBase):
     created_at = Column(DateTime, default=datetime.datetime.now())
     last_activity = Column(DateTime, nullable=True)
     user = Column(String(64), unique=True, nullable=False)
+    email = Column(String(64), unique=True, nullable=False)
     url_path = Column(String(1024), nullable=True)
     service_address = Column(String(1024), nullable=True)
     container_name = Column(String(128), nullable=True)
@@ -97,7 +99,7 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
 
 def get_ldap_address(mode, openldap_name, net_id):
     if mode == "container":
-        from tsliceh.orchestrators import get_container_ip
+        from t4hub.orchestrators import get_container_ip
         ldap_adress = get_container_ip(openldap_name, net_id) + ":389"
     else:
         ldap_adress = "localhost:389"

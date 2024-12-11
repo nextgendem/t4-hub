@@ -1,5 +1,5 @@
-# 3DSlicer Hub
-**3DSlicer Hub** is an application that replicates the functionality of **JupyterHub**, but for **3DSlicer**. It allows users to efficiently manage 3DSlicer instances, providing a login mechanism, the ability to launch and share instances, and integration with a reverse proxy for simplified access.
+# Transformer-4 Hub
+**Transformer-4 Hub** is an application that replicates the functionality of **JupyterHub**, but for **Transformer-4**. It allows users to efficiently manage Transformer-4 instances, providing a login mechanism, the ability to launch and share instances, and integration with a reverse proxy for simplified access.
 
 Unregistered users:
 
@@ -25,16 +25,22 @@ Requirements:
 
 Docker must be correctly installed
 
-__!!! Make sure the file `tsliceh_local.env` contains the variable:__
+__!!! Make sure the file `t4hub_local.env` contains the variable:__
 CONTAINER_ORCHESTRATOR="docker_compose"
 
-1. Build the VNC version of 3D Slicer used for each session:
+1. Build the VNC version of Transformer-4 used for each session:
 
 ```bash
 docker build -t vnc-base https://github.com/OpenDx28/docker-vnc-base.git#:src
 ```
 
-2. Run Docker Compose to start the environment:
+2. Build transformer4 build for each session (need perms, private repository):
+
+```bash
+docker build -t transformer4 --build-arg BASE_IMAGE="vnc-base:latest" https://github.com/nextgendem/t4-novnc#:src
+```
+   
+3. Run Docker Compose to start the environment:
 
 ```bash
 docker-compose up -d
@@ -45,7 +51,7 @@ docker-compose up -d
 __!!! Make sure the `.env` file contains the variable:__
 CONTAINER_ORCHESTRATOR="docker_compose"
 
-In the `.env` file, change the project path `SCRIPT_DIR="/path/to/project/3dslicerhub"` to the local path to the project.
+In the `.env` file, change the project path `SCRIPT_DIR="/path/to/your/project/t4-hub"` to the local path to the project.
 
 Run Docker Compose, but only the proxy and openldap services, executing:
 
@@ -72,18 +78,18 @@ Registry Docker container [Docker Registry](https://hub.docker.com/_/registry) i
 docker run -d -p 5000:5000 --restart=always --name registry registry:2
 ```
 
-2. Build and push the 3DSlicer Hub image to the Docker registry:
+2. Build and push the Transformer-4 Hub image to the Docker registry:
 
 ```bash
 docker build -t localhost:5000/opendx28/tslicerh .
 docker push localhost:5000/opendx28/tslicerh
 ```
 
-3. Build the VNC version of 3D Slicer and push it to the Docker registry:
+3. Build the VNC version of Transformer-4 and push it to the Docker registry:
 
 ```bash
 docker build -t vnc-base https://github.com/OpenDx28/docker-vnc-base.git#:src
-docker build -t localhost:5000/opendx28/slicer --build-arg BASE_IMAGE="vnc-base:latest" https://github.com/OpenDx28/docker-slicer.git#:src
+docker build -t localhost:5000/opendx28/slicer --build-arg BASE_IMAGE="vnc-base:latest" https://github.com/nextgendem/t4-novnc.git#:src
 docker push localhost:5000/opendx28/slicer
 ```
 
@@ -91,8 +97,8 @@ docker push localhost:5000/opendx28/slicer
 
 ```bash
 minikube start
-cd /path/to/your/project/3dslicerhub
-kubectl delete -f tsliceh/kubernetes/tdsh.yaml
+cd /path/to/your/project/t4-hub
+kubectl delete -f t4hub/kubernetes/tdsh.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
 ```
@@ -101,7 +107,7 @@ eval $(minikube docker-env)
 
 ```bash
 eval $(minikube docker-env --unset)
-kubectl apply -f /path/to/your/project/3dslicerhub/tsliceh/kubernetes/tdsh.yaml
+kubectl apply -f /path/to/your/project/t4-hub/t4hub/kubernetes/tdsh.yaml
 ```
 
 ### Running in a Private Cluster
@@ -111,7 +117,7 @@ kubectl apply -f /path/to/your/project/3dslicerhub/tsliceh/kubernetes/tdsh.yaml
 3. Apply Manifests:
 
 ```bash
-kubectl apply -f /path/to/your/project/3dslicerhub/tsliceh/kubernetes/teide_tdsh.yaml
+kubectl apply -f /path/to/your/project/t4-hub/t4hub/kubernetes/teide_tdsh.yaml
 ```
 
 Note that in this development environment case, the `imagePullPolicy` in the pod manifest must be set to __Always__ to get the new image each time it is built.
@@ -119,10 +125,10 @@ Note that in this development environment case, the `imagePullPolicy` in the pod
 ## Features
 
 - **Login:** Provides a login page connected to an LDAP server.
-- **Launching 3DSlicer Instances:** Allows users to start 3DSlicer instances with specific configurations in the future.
-- **Instance Management:** Ability to stop unused 3DSlicer instances.
+- **Launching Transformer-4 Instances:** Allows users to start Transformer-4 instances with specific configurations in the future.
+- **Instance Management:** Ability to stop unused Transformer-4 instances.
 - **Integration with a Reverse Proxy:** Provides a single entry point for users.
-- **Sharing Instances:** Facilitates sharing of 3DSlicer instances among users.
+- **Sharing Instances:** Facilitates sharing of Transformer-4 instances among users.
 - **Persistent Storage:** Offers persistent storage for new container instances.
 
 ## Documentation
@@ -144,11 +150,11 @@ This project is licensed under the MIT License. For more details, please refer t
 
 ## Class Orchestrator
 
-The **Orchestrator** is a critical component of the 3DSlicer Hub that manages the lifecycle of container instances running 3DSlicer. It abstracts the details of container management, allowing the application to interact with Docker and Kubernetes seamlessly.
+The **Orchestrator** is a critical component of the Transformer-4 Hub that manages the lifecycle of container instances running Transformer-4. It abstracts the details of container management, allowing the application to interact with Docker and Kubernetes seamlessly.
 
 ### Key Features of the Orchestrator:
 
-- **Container Lifecycle Management**: The orchestrator handles the creation, starting, stopping, and removal of container instances. This allows users to launch new 3DSlicer sessions and manage existing ones efficiently.
+- **Container Lifecycle Management**: The orchestrator handles the creation, starting, stopping, and removal of container instances. This allows users to launch new Transformer-4 sessions and manage existing ones efficiently.
 
 - **Support for Multiple Backends**: The orchestrator supports both Docker and Kubernetes as orchestration backends. This flexibility allows users to deploy the application in different environments depending on their needs and infrastructure.
 
@@ -156,7 +162,7 @@ The **Orchestrator** is a critical component of the 3DSlicer Hub that manages th
 
 - **Asynchronous Operations**: The orchestrator employs asynchronous programming patterns, particularly when starting containers and waiting for their readiness. This ensures that the application remains responsive while managing multiple containers concurrently.
 
-- **Volume Management**: The orchestrator also manages persistent storage volumes, allowing user data to be retained across container restarts. This is crucial for maintaining the state of 3DSlicer sessions.
+- **Volume Management**: The orchestrator also manages persistent storage volumes, allowing user data to be retained across container restarts. This is crucial for maintaining the state of Transformer-4 sessions.
 
 By encapsulating the complexities of container management, the orchestrator allows the rest of the application to focus on providing a smooth user experience and managing sessions, rather than dealing with low-level container operations.
 
