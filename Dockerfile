@@ -34,8 +34,8 @@ RUN curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s 
 
 # COMMON
 RUN pip3 install --no-cache-dir --upgrade pip && \
-    pip3 install --no-cache-dir git+https://github.com/Supervisor/supervisor gunicorn
-
+    pip3 install --no-cache-dir git+https://github.com/Supervisor/supervisor gunicorn && \
+	pip3 install --no-cache-dir python-jose[cryptography]
 WORKDIR /app
 
 RUN mkdir -p /srv
@@ -54,7 +54,7 @@ CMD ["supervisord", "-c", "/etc/supervisord.conf"]
 
 EXPOSE 8080
 
-COPY tsliceh_local.env /app/.env
+COPY t4hub_local.env /app/.env
 COPY users /app/user
 COPY proxy /app/proxy
-COPY tsliceh /app/tsliceh
+COPY t4hub /app/t4hub
