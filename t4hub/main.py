@@ -123,7 +123,7 @@ elif co_str == "kubernetes":
     logger.debug(f"===================\nLOGGER: {logger}\n=========================")
 
 container_orchestrator = container_orchestrator_factory(co_str)
-tdslicerhub_adress = get_container_internal_address(container_orchestrator, os.getenv("T4HUB_NAME"), network_id) \
+hub_address = get_container_internal_address(container_orchestrator, os.getenv("T4HUB_NAME"), network_id) \
     if os.getenv("MODE") != "local" else domain
 
 
@@ -180,9 +180,8 @@ async def refresh_nginx(co: IContainerOrchestrator, sess, nginx_cfg_path, domain
     await command_nginx_to_read_configuration()
 
 
-asyncio.run(refresh_nginx(container_orchestrator, None, nginx_config_path, domain, tdslicerhub_adress))
+asyncio.run(refresh_nginx(container_orchestrator, None, nginx_config_path, domain, hub_address))
 max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
-slicer_ini = os.getenv("SLICER_INI")
 
 
 def count_active_session_containers(sess):
@@ -197,20 +196,16 @@ def count_active_session_containers(sess):
 
 # Welcome & login page
 @app.get("/index.html")
-async def index_page(id : str = "0"):
+async def index_page(id: str = "0"):
     with db_access_lock:
         session = orm_session_maker()
-        r = HTMLResponse(content=refresh_index_html(session,id, proto=proto, admin=False, write_to_file=False),
-                            status_code=200)
+        html_content = refresh_index_html(session, id, proto=proto, admin=False, write_to_file=False)
         session.close()
-        return r
-
+    return HTMLResponse(content=html_content, status_code=200)
 
 @app.get("/")
 async def welcome_and_login_page(request: Request):
-    # Jinja2 template with login page
-    _ = dict(request=request)
-    return templates.TemplateResponse("login.html", _)
+    return templates.TemplateResponse("login.html", {"request": request})
 
 
 async def check_credentials(user, password):
@@ -485,7 +480,7 @@ async def auth_google(code: str,request: Request):
                         session.add(s)
                         session.commit()
                         # Update nginx.conf and reread Nginx configuration
-                        await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+                        await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, hub_address)
                     else:
                         return HTMLResponse(content=f"""<!DOCTYPE html>
 
@@ -591,7 +586,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                             session.add(s)
                             session.commit()
                             # Update nginx.conf and reread Nginx configuration
-                            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+                            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, hub_address)
                         else:
                             return HTMLResponse(content=f"""<!DOCTYPE html>
                                                             <html>
@@ -624,77 +619,11 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
 
 # HTML Responses main hub
 # View of the user's session and other sessions
-# Works only when refreshing, not possible (nor recreated) in app.get
-
-@app.post("/sessions/{session_id}")
-async def get_session_management_page(request: Request, session_id: str, page):
-    source = request.cookies.get("source", "unknown")
-    if source != session_id:
-        return HTMLResponse(content="""<!DOCTYPE html>
-                                        <html>
-                                          <head>
-                                            <title>Login Failed</title>
-                                          </head>
-                                          <body>
-                                          <p>Access not authorized</p>
-                                          </body>
-                                        </html>""", status_code=401)
-                                        
-    session = orm_session_maker()
-    s = session.query(Session3DSlicer).get(session_id)
-    lst = []
-    if s is None:
-        _ = dict(request=request,
-                 url_base="",
-                 sessions_list=lst,
-                 sess_uuid=session_id,
-                 sess_link=f"",
-                 files_link=f"",
-                 sess_email="Not email found",
-                 sess_user="Session ID not found",
-                 sess_shared="Session ID not found")
-    else:
-        user_rol = get_user_roles(s.email)
-        # check if it's admin or not
-        is_admin = "sys-admin" in user_rol
-        if is_admin:
-            for _ in session.query(Session3DSlicer).all():
-                d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
-                lst.append(d)
-
-        _ = dict(request=request,
-                 url_base="",
-                 sessions_list=lst,
-                 sess_uuid=session_id,
-                 sess_link=s.url_path,
-                 files_link=f"/{s.uuid}-files/",
-                 sess_user=s.user,
-                 sess_email=s.email,
-                 sess_shared=s.info['shared'])
-    # n = 0
-    # while True:
-    #     container_status = container_orchestrator.get_container_status(s.container_name)
-    #     if container_status == "Status: Running":
-    #         break
-    #     if n == 10:
-    #         container_status = "can't initiate 3dSlicer"
-    #     await time.sleep(1)
-    #     n = + 1
-
-    with db_access_lock:
-        session = orm_session_maker()
-        r = HTMLResponse(content=refresh_manage_session_html(lst,session_id, session,page, proto=proto, admin=False, write_to_file=False),
-                            status_code=200)
-        print("Respuesta:" + str(r))
-        session.close()
-        return r
-
-# HTML Responses main hub
-# View of the user's session and other sessions
+# (post) Works only when refreshing, not possible (nor recreated) in app.get
 
 @app.get("/sessions/{session_id}")
-async def get_session_management_page(request: Request, session_id: str, page):
-    
+@app.post("/sessions/{session_id}")
+async def get_session_management_page(request: Request, session_id: str, page: str = "main"):
     source = request.cookies.get("source", "unknown")
     if source != session_id:
         return HTMLResponse(content="""<!DOCTYPE html>
@@ -706,7 +635,7 @@ async def get_session_management_page(request: Request, session_id: str, page):
                                           <p>Access not authorized</p>
                                           </body>
                                         </html>""", status_code=401)
-                                        
+
     session = orm_session_maker()
     s = session.query(Session3DSlicer).get(session_id)
     lst = []
@@ -755,7 +684,6 @@ async def get_session_management_page(request: Request, session_id: str, page):
         print("Respuesta:" + str(r))
         session.close()
         return r
-    #return templates.TemplateResponse("manage_session.html", _)
 
 # NOT USED
 # Delete session from this database (only sys-admin)
@@ -775,7 +703,7 @@ async def close_session_and_container(admin_id,session_id):
             session.delete(s)
             session.commit()
             #Update nginx.conf and reread Nginx configuration
-            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, hub_address)
             session.close()
             if admin_id == session_id:
                 return RedirectResponse(url="/", status_code=302)
@@ -857,7 +785,7 @@ async def close_session_and_container(session_id):
             session.delete(s)
             session.commit()
             # Update nginx.conf and reread Nginx configuration
-            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, hub_address)
             session.close()
             return RedirectResponse(url="/", status_code=302)
         else:
@@ -871,7 +799,7 @@ async def close_session_and_container(session_id):
 # transfomer4-admin (admin) -> Manage/See sessions
 # sys-admin (super-admin) -> + (from manage session) see session properties of other sessions and can delete sessions
 
-def refresh_index_html(sess,id, proto="http", admin=True, write_to_file=True):
+def refresh_index_html(sess, id: str, proto="http", admin=True, write_to_file=True):
 
     if max_sessions < 1000:
         cont = count_active_session_containers(sess)
@@ -1016,16 +944,16 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
     <div class="container">
       <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
         <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-          <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+          <img class="me-3" src="/static/images/app.png" alt="logo_web" width="40">
         </a>
-        <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+        <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">TRANSFORMER-4</span>
         <select id="rolViewChange" class="form-select mr-2" style="max-width: 15vh" onchange="this.options[this.selectedIndex].value && (window.location = this.options[this.selectedIndex].value);">
             <option selected value="/sessions/{sess_uuid}?page=main">Admin</option>
             <option value="/index.html?id={sess_uuid}">Guest</option>
         </select>
         <div class="text-end">
           <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-            <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">
+            <img class="me-3" src="/static/images/external_app.png" alt="logo_web" width="40">
           </a>
         </div>
       </div>
@@ -1259,7 +1187,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
         """
                 _ += f"""
         <a href="{_url}" target="_blank" rel="noopener noreferrer">
-        <img src="/static/images/transformer4.png" alt="transformer4image" style="width:23%" class="w3-circle w3-hover-opacity">
+        <img src="/static/images/app.png" alt="transformer4image" style="width:23%" class="w3-circle w3-hover-opacity">
         </a>
         <h3>{s.user}</h3>
         <p>CPU [%]: {s.info["CPU_pct"]}</p>
@@ -1391,7 +1319,7 @@ class BackgroundRunner:
             sess.commit()
             sess.close()
         # Update nginx.conf and reread Nginx configuration
-        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
+        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, hub_address)
 
         # Remove dangling 3dslicer containers managed by 3dslicer-hub
         for name in tdslicer_containers:
@@ -1415,7 +1343,7 @@ class BackgroundRunner:
                         stop_remove_container(s.container_name)
                         sess.delete(s)
                         # Update nginx.conf and reread Nginx configuration
-                        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
+                        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, hub_address)
 
                 sess.commit()
                 sess.close()
