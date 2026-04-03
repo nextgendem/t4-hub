@@ -36,7 +36,7 @@ def get_container_internal_address(co: IContainerOrchestrator, name_id, network_
         port = co.get_container_port(name_id)
     else:
         port = 6901
-    return f"{ip or name_id}:{port}"
+    return f"{name_id or ip}:{port}"
 
 
 def containers_cpu_percent_dict(co: IContainerOrchestrator):

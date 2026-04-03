@@ -210,7 +210,7 @@ http {{
             logger.debug(f"NGINX status: {status}\n----------------")
             # TODO Needs better handling of statuses
             if status.lower() == "running":
-                r = co.execute_cmd_in_nginx_container(nginx_cont_name, "/etc/init.d/nginx reload")
+                r = co.execute_cmd_in_nginx_container(nginx_cont_name, "nginx -s reload")
                 if r is None:
                     co.start_base_containers()
                 else:
@@ -1327,7 +1327,7 @@ async def launch_app_web_container(s: AppSession):
                                                      network_id, vol_dict, s.uuid, use_gpu = s.gpu)
     logs = c.logs
     # todo error control
-    s.service_address = get_container_internal_address(container_orchestrator, c.id, network_id)
+    s.service_address = get_container_internal_address(container_orchestrator, container_name, network_id)
     s.container_name = container_name
     logger.info(f"container {c.name} : {c.status} in {s.service_address}")
 
