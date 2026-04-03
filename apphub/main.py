@@ -98,7 +98,7 @@ db_access_lock = nullcontext() if "postgresql" in db_conn_str else lock
 
 if co_str == "docker_compose":
     network_id = create_docker_network(network_name)
-    CONTAINER_NAME_PREFIX = "h__tds__"
+    CONTAINER_NAME_PREFIX = "h__app__"
 
     # setup loggers https://github.com/tiangolo/uvicorn-gunicorn-fastapi-docker/issues/19#issuecomment-606672830
     logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"), disable_existing_loggers=False)
