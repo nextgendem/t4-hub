@@ -28,15 +28,13 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import exc
 from starlette.responses import RedirectResponse, HTMLResponse
 
-import ldap3
-from ldap3.core.exceptions import LDAPException
-from t4hub import create_session_factory, create_local_orm, Session3DSlicer, create_tables, get_ldap_address, \
+from apphub import create_session_factory, create_local_orm, AppSession, create_tables, \
     get_domain_name
-from t4hub.gunicorn_config import lock
+from apphub.gunicorn_config import lock
 from contextlib import nullcontext
-from t4hub.orchestrators import create_docker_network, IContainerOrchestrator, container_orchestrator_factory
-from t4hub.volumes import create_all_volumes, volume_dict
-from t4hub.helpers import get_container_internal_address
+from apphub.orchestrators import create_docker_network, IContainerOrchestrator, container_orchestrator_factory
+from apphub.volumes import create_all_volumes, volume_dict
+from apphub.helpers import get_container_internal_address
 from fastapi.logger import logger
 import logging.config
 import logging
@@ -78,12 +76,14 @@ index_path = os.getenv('INDEX_PATH')  # Path for the automatic index.html file
 allowed_inactivity_time_in_seconds = int(os.getenv("INACTIVITY_TIME_SEC"))
 network_name = os.getenv('NETWORK_NAME')
 proto = os.getenv('PROTO')
+
+# TODO Revisit, different k8s clusters will have different persistent volumes
 nfs_server = os.getenv('NFS_SERVER')  # Not used. Teide provides NFS mounts directly to all nodes
-ldap_base = "ou=slicerhub,dc=opendx,dc=org"
+
 co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")
-tdslicer_image_name = "transformer4"
-tdslicer_image_tag = "latest"
-tdslicer_image_url = os.getenv("SLICER_IMAGE_DOCKERFILE", "https://github.com/nextgendem/t4-novnc#:src")
+app_image_name = "transformer4"
+app_image_tag = "latest"
+app_image_url = os.getenv("APP_IMAGE_DOCKERFILE", "https://github.com/nextgendem/t4-novnc#:src")
 base_vnc_image_name = "vnc-base"
 base_vnc_image_tag = "latest"
 base_vnc_image_url = os.getenv("VNC_BASE_IMAGE_DOCKERFILE", "https://github.com/OpenDx28/docker-vnc-base.git#:src")
@@ -98,7 +98,6 @@ db_access_lock = nullcontext() if "postgresql" in db_conn_str else lock
 
 if co_str == "docker_compose":
     network_id = create_docker_network(network_name)
-    ldap_address = get_ldap_address(os.getenv("MODE"), os.getenv("OPENLDAP_NAME"), network_id)
     CONTAINER_NAME_PREFIX = "h__tds__"
 
     # setup loggers https://github.com/tiangolo/uvicorn-gunicorn-fastapi-docker/issues/19#issuecomment-606672830
@@ -112,9 +111,6 @@ if co_str == "docker_compose":
         logger.setLevel(logging.DEBUG)  # 2
 elif co_str == "kubernetes":
     network_id = 0  # TODO Create network in kubernetes, obtain its id
-    ldap_host = os.getenv("OPENLDAP_NAME")
-    ldap_port = os.getenv("OPENLDAP_PORT")
-    ldap_address = f"{ldap_host}:{ldap_port}"  # TODO Obtain ldap_adress from kubernetes
     CONTAINER_NAME_PREFIX = "slicer-"
 
     # logger = logging.getLogger(__name__)  # 1
@@ -127,7 +123,7 @@ elif co_str == "kubernetes":
     logger.debug(f"===================\nLOGGER: {logger}\n=========================")
 
 container_orchestrator = container_orchestrator_factory(co_str)
-tdslicerhub_adress = get_container_internal_address(container_orchestrator, os.getenv("T4HUB_NAME"), network_id) \
+app_hub_address = get_container_internal_address(container_orchestrator, os.getenv("APP_HUB_NAME"), network_id) \
     if os.getenv("MODE") != "local" else domain
 
 
@@ -160,7 +156,7 @@ http {{
     """
         # Variable length section, for each location
         if sess:
-            for s in sess.query(Session3DSlicer).all():
+            for s in sess.query(AppSession).all():
                 # Section doing reverse proxy magic
                 _ += f"""
 
@@ -230,15 +226,14 @@ http {{
     await command_nginx_to_read_configuration(nginx_container_name)
 
 
-asyncio.run(refresh_nginx(container_orchestrator, None, nginx_config_path, domain, tdslicerhub_adress))
+asyncio.run(refresh_nginx(container_orchestrator, None, nginx_config_path, domain, app_hub_address))
 max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
-slicer_ini = os.getenv("SLICER_INI")
 
 
 def count_active_session_containers(sess):
     # Obtain number of active sessions (with started container)
     cont = 0
-    for s in sess.query(Session3DSlicer).all():
+    for s in sess.query(AppSession).all():
         pct = container_orchestrator.get_container_activity(s.container_name)
         if pct != -1:
             cont += 1
@@ -264,15 +259,7 @@ async def welcome_and_login_page(request: Request):
 
 
 async def check_credentials(user, password):
-    try:
-        with ldap3.Connection(ldap_address, user=f"uid={user},{ldap_base}", password=password,
-                              read_only=True) as conn:
-            logger.info(conn.result["description"])  # "success" if bind is ok
-            return True
-    except LDAPException as e:
-        print(e)
-        logger.error(e.args)
-        return True
+    return True
 
 
 async def can_open_session(user):
@@ -514,12 +501,12 @@ async def auth_google(code: str,request: Request):
             session = orm_session_maker()
             container_launched = False
             try:
-                s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
+                s = session.query(AppSession).filter(AppSession.user == username).first()
                 if not s:
                     # Create new session (IF there is room)
                     cont = count_active_session_containers(session)
                     if cont < max_sessions:
-                        s = Session3DSlicer()
+                        s = AppSession()
                         s.uuid = uuid.uuid4()
                         s.user = username
                         s.email = user_info["email"]
@@ -527,7 +514,7 @@ async def auth_google(code: str,request: Request):
                         s.gpu = gpu
                         s.url_path = f"/{s.uuid}/"
                         # Launch new 3d slicer container (it also sets the "container_name" field)
-                        await launch_3dslicer_web_container(s)
+                        await launch_app_web_container(s)
                         container_launched = True
                         pct = container_orchestrator.get_container_activity(s.container_name)
                         s.info = {'CPU_pct': pct, 'shared': False}
@@ -535,7 +522,7 @@ async def auth_google(code: str,request: Request):
                         session.add(s)
                         session.commit()
                         # Update nginx.conf and reread Nginx configuration
-                        await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+                        await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, app_hub_address)
                     else:
                         return HTMLResponse(content=f"""<!DOCTYPE html>
 
@@ -620,12 +607,12 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 session = orm_session_maker()
                 container_launched = False
                 try:
-                    s = session.query(Session3DSlicer).filter(Session3DSlicer.user == username).first()
+                    s = session.query(AppSession).filter(AppSession.user == username).first()
                     if not s:
                         # Create new session (IF there is room)
                         cont = count_active_session_containers(session)
                         if cont < max_sessions:
-                            s = Session3DSlicer()
+                            s = AppSession()
                             s.uuid = uuid.uuid4()
                             s.user = username
                             s.email = "none"
@@ -633,7 +620,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                             s.gpu = gpu
                             s.url_path = f"/{s.uuid}/"
                             # Launch new 3d slicer container (it also sets the "container_name" field)
-                            await launch_3dslicer_web_container(s)
+                            await launch_app_web_container(s)
                             container_launched = True
                             pct = container_orchestrator.get_container_activity(s.container_name)
                             s.info = {'CPU_pct': pct, 'shared': False}
@@ -641,7 +628,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                             session.add(s)
                             session.commit()
                             # Update nginx.conf and reread Nginx configuration
-                            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+                            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, app_hub_address)
                         else:
                             return HTMLResponse(content=f"""<!DOCTYPE html>
                                                             <html>
@@ -691,7 +678,7 @@ async def get_session_management_page(request: Request, session_id: str, page):
                                         </html>""", status_code=401)
                                         
     session = orm_session_maker()
-    s = session.query(Session3DSlicer).get(session_id)
+    s = session.query(AppSession).get(session_id)
     lst = []
     if s is None:
         _ = dict(request=request,
@@ -708,7 +695,7 @@ async def get_session_management_page(request: Request, session_id: str, page):
         # check if it's admin or not
         is_admin = "sys-admin" in user_rol
         if is_admin:
-            for _ in session.query(Session3DSlicer).all():
+            for _ in session.query(AppSession).all():
                 d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
                 lst.append(d)
 
@@ -758,7 +745,7 @@ async def get_session_management_page(request: Request, session_id: str, page):
                                         </html>""", status_code=401)
                                         
     session = orm_session_maker()
-    s = session.query(Session3DSlicer).get(session_id)
+    s = session.query(AppSession).get(session_id)
     lst = []
     if s is None:
         _ = dict(request=request,
@@ -775,7 +762,7 @@ async def get_session_management_page(request: Request, session_id: str, page):
         # check if it's admin or not
         is_admin = "sys-admin" in user_rol
         if is_admin:
-            for _ in session.query(Session3DSlicer).all():
+            for _ in session.query(AppSession).all():
                 d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
                 lst.append(d)
 
@@ -814,7 +801,7 @@ async def get_session_management_page(request: Request, session_id: str, page):
 async def close_session_and_container(admin_id,session_id):
     with db_access_lock:
         session = orm_session_maker()
-        s = session.query(Session3DSlicer).get(session_id)
+        s = session.query(AppSession).get(session_id)
         if s:
             container_name = CONTAINER_NAME_PREFIX + container_orchestrator.get_valid_name(s.user)
             status = container_orchestrator.get_container_status(container_name)
@@ -825,7 +812,7 @@ async def close_session_and_container(admin_id,session_id):
             session.delete(s)
             session.commit()
             #Update nginx.conf and reread Nginx configuration
-            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, app_hub_address)
             session.close()
             if admin_id == session_id:
                 return RedirectResponse(url="/", status_code=302)
@@ -842,7 +829,7 @@ async def close_session_and_container(admin_id,session_id):
 async def share_session(request: Request, session_id: str, interactive: int = 0):
     with db_access_lock:
         session = orm_session_maker()
-        s = session.query(Session3DSlicer).get(session_id)
+        s = session.query(AppSession).get(session_id)
         if s:
             s.info["shared"] = True
             s.info["shared_interactive"] = interactive
@@ -870,7 +857,7 @@ async def share_session(request: Request, session_id: str, interactive: int = 0)
 async def unshare_session(request: Request, session_id: str):
     with db_access_lock:
         session = orm_session_maker()
-        s = session.query(Session3DSlicer).get(session_id)
+        s = session.query(AppSession).get(session_id)
         if s:
             s.info["shared"] = False
             flag_modified(s, "info")
@@ -896,7 +883,7 @@ async def unshare_session(request: Request, session_id: str):
 async def close_session_and_container(session_id):
     with db_access_lock:
         session = orm_session_maker()
-        s = session.query(Session3DSlicer).get(session_id)
+        s = session.query(AppSession).get(session_id)
         if s:
             container_name = CONTAINER_NAME_PREFIX + container_orchestrator.get_valid_name(s.user)
             status = container_orchestrator.get_container_status(container_name)
@@ -907,7 +894,7 @@ async def close_session_and_container(session_id):
             session.delete(s)
             session.commit()
             # Update nginx.conf and reread Nginx configuration
-            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, tdslicerhub_adress)
+            await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, app_hub_address)
             session.close()
             return RedirectResponse(url="/", status_code=302)
         else:
@@ -987,7 +974,7 @@ def refresh_index_html(sess,id, proto="http", admin=True, write_to_file=True):
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     """
-    for s in sess.query(Session3DSlicer).all():
+    for s in sess.query(AppSession).all():
             if admin or s.info["shared"]:
                 # Section doing reverse proxy magic
                 if s.info.get('shared_interactive', 0):
@@ -1014,7 +1001,7 @@ def refresh_index_html(sess,id, proto="http", admin=True, write_to_file=True):
     return _
 
 def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=True, write_to_file=True):
-    s_local = sess.query(Session3DSlicer).get(sess_uuid)
+    s_local = sess.query(AppSession).get(sess_uuid)
     if not s_local:
         _ = f"""
         <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
@@ -1248,7 +1235,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     """
-    for s in sess.query(Session3DSlicer).all():
+    for s in sess.query(AppSession).all():
             if is_super_admin:
               _ +=  f"""
 
@@ -1324,19 +1311,19 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
         logger.info(f"index.html re-written")
     return _
 
-async def launch_3dslicer_web_container(s: Session3DSlicer):
+async def launch_app_web_container(s: AppSession):
     """
-    Launch a 3DSlicer web container
+    Launch a AppSlicer web container
     """
     # just one container per user
     container_name = CONTAINER_NAME_PREFIX + container_orchestrator.get_valid_name(s.user)
 
     logger.info("CREATING NEW CONTAINER")
-    container_orchestrator.create_image(tdslicer_image_name, tdslicer_image_tag)
+    container_orchestrator.create_image(app_image_name, app_image_tag)
     create_all_volumes(container_orchestrator, s.user)
     vol_dict = volume_dict(s.user)
     # await asyncio.sleep(5)
-    c = await container_orchestrator.start_container(container_name, tdslicer_image_name, tdslicer_image_tag,
+    c = await container_orchestrator.start_container(container_name, app_image_name, app_image_tag,
                                                      network_id, vol_dict, s.uuid, use_gpu = s.gpu)
     logs = c.logs
     # todo error control
@@ -1403,14 +1390,14 @@ class BackgroundRunner:
         # ---- sessions_checker ----------------------------------------------------------------------------------------
         logger.info("::::::::::::::::::::::: Session Checker :::::::::::::::::::::::::::::::::::")
 
-        tdslicer_containers = container_orchestrator.get_tdscontainers(CONTAINER_NAME_PREFIX)
+        tdslicer_containers = container_orchestrator.get_app_containers(CONTAINER_NAME_PREFIX)
 
         # Reassociate, restart or delete 3D Slicer Sessions if we are back from a restart of the container
         # Restart relaunches 3DSlicer ("restart" is always False, so this is disabled currently)
         # Delete
         with db_access_lock:
             sess = sm()
-            for s in sess.query(Session3DSlicer).all():
+            for s in sess.query(AppSession).all():
                 pct = container_orchestrator.get_container_activity(s.container_name)
                 logger.info(f"pct container: {s.container_name}: {pct} ")
                 s.last_activity = datetime.datetime.now()
@@ -1419,7 +1406,7 @@ class BackgroundRunner:
                     if s.restart:
                         # TODO right now "restart" is always False so this is never executed
                         logger.info(f"::::::::::::::::: sessions_checker - restarting container for user {s.user}")
-                        await launch_3dslicer_web_container(s)
+                        await launch_app_web_container(s)
                         s.info['CPU_pct'] = ACTIVITY_THRESHOLD + 1
                         sess.add(s)
                     else:
@@ -1441,7 +1428,7 @@ class BackgroundRunner:
             sess.commit()
             sess.close()
         # Update nginx.conf and reread Nginx configuration
-        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
+        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, app_hub_address)
 
         # Remove dangling 3dslicer containers managed by 3dslicer-hub
         for name in tdslicer_containers:
@@ -1456,7 +1443,7 @@ class BackgroundRunner:
                       f"Inactivity time (secs): {allowed_inactivity_time_in_seconds}")
                 sess = sm()
                 # Loop all sessions, remove those that are not in use
-                for s in sess.query(Session3DSlicer).all():
+                for s in sess.query(AppSession).all():
                     print(f"Session - Name: {s.container_name};\n UUID: {s.uuid};\n User: {s.user}\n")
                     stop = await check_session_activity(s)  # Implicit parameter: "s" (3dslicer session)
                     sess.add(s)
@@ -1465,7 +1452,7 @@ class BackgroundRunner:
                         stop_remove_container(s.container_name)
                         sess.delete(s)
                         # Update nginx.conf and reread Nginx configuration
-                        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, tdslicerhub_adress)
+                        await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, app_hub_address)
 
                 sess.commit()
                 sess.close()

@@ -50,7 +50,7 @@ class Base(object):
 SQLAlchemyBase = declarative_base(cls=Base)
 
 
-class Session3DSlicer(SQLAlchemyBase):
+class AppSession(SQLAlchemyBase):
     __tablename__ = "sessions"
     uuid = Column(GUID, nullable=False, primary_key=True)
     created_at = Column(DateTime, default=datetime.datetime.now())
@@ -97,15 +97,6 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
         declarative_base_.metadata.create_all()
 
 
-def get_ldap_address(mode, openldap_name, net_id):
-    if mode == "container":
-        from t4hub.orchestrators import get_container_ip
-        ldap_adress = get_container_ip(openldap_name, net_id) + ":389"
-    else:
-        ldap_adress = "localhost:389"
-    return ldap_adress
-
-
 def get_domain_name(mode, domain_name, port=None):
     from dotenv import load_dotenv
     if mode == "local":
@@ -119,53 +110,5 @@ def get_domain_name(mode, domain_name, port=None):
         else:
             return "localhost"
 
-
-# def connect_ldap_server(ldap_adress):
-#     """
-#     https://medium.com/analytics-vidhya/crud-operations-for-openldap-using-python-ldap3-46393e3122af
-#     :param ldap_adress:
-#     :return:
-#     """
-#     try:
-#
-#         # Provide the hostname and port number of the openLDAP
-#         # TODO FIND ldap ip
-#         server_uri = ldap_adress
-#         server = Server(server_uri, get_info=ALL)
-#         # username and password can be configured during openldap setup
-#         connection = Connection(server,
-#                                 user='cn=admin,dc=opendx,dc=org',
-#                                 password="admin_pass")
-#         bind_response = connection.bind()  # Returns True or False
-#     except LDAPBindError as e:
-#         connection = e
-#         return connection
-#
-#
-# #
-# # # For groups provide a groupid number instead of a uidNumber
-# def get_ldap_users(ldap_adress):
-#     """
-#     https://medium.com/analytics-vidhya/crud-operations-for-openldap-using-python-ldap3-46393e3122af
-#     :return:
-#     :ldap_adress: interal IP of the container
-#     """
-#     # Provide a search base to search for.
-#     search_base = 'dc=testldap,dc=com'
-#     # provide a uidNumber to search for. '*" to fetch all users/groups
-#     search_filter = '(uidNumber=500)'
-#
-#     # Establish connection to the server
-#     ldap_conn = connect_ldap_server(ldap_adress)
-#     try:
-#         # only the attributes specified will be returned
-#         ldap_conn.searchsearch('dc=opendx,dc=org', '(uid=*)',
-#                                attributes=['sn', 'cn', 'homeDirectory'],
-#                                size_limit=0)
-#         # search will not return any values.
-#         # the entries method in connection object returns the results
-#         results = ldap_conn.entries
-#     except LDAPException as e:
-#         results = e
 
 

@@ -98,7 +98,7 @@ docker push localhost:5000/opendx28/slicer
 ```bash
 minikube start
 cd /path/to/your/project/t4-hub
-kubectl delete -f t4hub/kubernetes/tdsh.yaml
+kubectl delete -f apphub/kubernetes/tdsh-old.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
 ```
@@ -107,7 +107,7 @@ eval $(minikube docker-env)
 
 ```bash
 eval $(minikube docker-env --unset)
-kubectl apply -f /path/to/your/project/t4-hub/t4hub/kubernetes/tdsh.yaml
+kubectl apply -f /path/to/your/project/t4-hub/apphub/kubernetes/tdsh-old.yaml
 ```
 
 ### Running in a Private Cluster
@@ -117,7 +117,7 @@ kubectl apply -f /path/to/your/project/t4-hub/t4hub/kubernetes/tdsh.yaml
 3. Apply Manifests:
 
 ```bash
-kubectl apply -f /path/to/your/project/t4-hub/t4hub/kubernetes/teide_tdsh.yaml
+kubectl apply -f /path/to/your/project/t4-hub/apphub/kubernetes/teide_tdsh.yaml
 ```
 
 Note that in this development environment case, the `imagePullPolicy` in the pod manifest must be set to __Always__ to get the new image each time it is built.

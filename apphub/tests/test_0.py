@@ -8,12 +8,12 @@ from dotenv import load_dotenv
 
 from fastapi.testclient import TestClient
 import asyncio
-from t4hub.main import app, orm_session_maker, allowed_inactivity_time_in_seconds
-from t4hub import Session3DSlicer
+from apphub.main import app, orm_session_maker, allowed_inactivity_time_in_seconds
+from apphub import AppSession
 import pytest
 import os
 import logging
-from t4hub.main import CONTAINER_NAME_PREFIX
+from apphub.main import CONTAINER_NAME_PREFIX
 data = {"username": "free_user", "password": "test"}
 
 
@@ -42,7 +42,7 @@ def compare_time_min(file):
 def clean_user_container():
     yield
     session = orm_session_maker()
-    s = session.query(Session3DSlicer).filter(Session3DSlicer.user == data["username"]).first()
+    s = session.query(AppSession).filter(AppSession.user == data["username"]).first()
     if s:
         try:
             session.delete(s)
@@ -116,7 +116,7 @@ def test_delete_container_and_session(client):
     time.sleep(waiting)
     # any 3DslicerSession?
     session = orm_session_maker()
-    s = session.query(Session3DSlicer).filter(Session3DSlicer.user == data["username"]).first()
+    s = session.query(AppSession).filter(AppSession.user == data["username"]).first()
     assert s is None
     index_file = os.getenv("INDEX_PATH")
     nginx_conf_file = os.getenv("NGINX_CONFIG_FILE")
@@ -131,7 +131,7 @@ def test_restart_session():
     pass
 
 def test_create_volume(client):
-    from t4hub.volumes import volume_dict, vol_dict
+    from apphub.volumes import volume_dict, vol_dict
     test_launch_container(client)
     dc = docker.from_env()
     volumes = volume_dict(data["username"])

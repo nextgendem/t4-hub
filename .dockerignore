@@ -22,5 +22,5 @@
 **/obj
 **/secrets.dev.yaml
 **/values.dev.yaml
-t4hub/logfile.log
+apphub/logfile.log
 README.md

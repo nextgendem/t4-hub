@@ -11,7 +11,8 @@ python_on_whales~=0.55.0  # Asegúrate de que esta versión sea compatible con t
 ldap3~=2.9.1
 python-dotenv~=0.21.0
 kubernetes~=26.1.0  # Versión actualizada compatible con Python 3.10
-pytest~=7.1.3
 starlette~=0.20.4
 psycopg2-binary~=2.9.9
+pytest>=9.0.2
 pandas
+jose>=1.0.0

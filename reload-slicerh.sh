@@ -9,5 +9,5 @@ docker push localhost:5000/opendx28/tslicerh
 eval $(minikube docker-env)
 echo "delete old pod"
 kubectl delete pod proxy-shub
-# kubectl apply -f /home/administrador/3dslicerhub/3dslicerhub-deploy/t4hub/kubernetes/teide_tdsh.yaml
+# kubectl apply -f /home/administrador/3dslicerhub/3dslicerhub-deploy/apphub/kubernetes/teide_tdsh.yaml
 kubectl apply -f /home/paula/Documentos/opendx28/3dslicerhub/t4hub/kubernetes/local_deployment/proxy-shub.yaml

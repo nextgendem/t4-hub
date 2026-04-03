@@ -1,6 +1,6 @@
 
 # LDAP server configuration
-LDAP_SERVER = 'tdslicerhub-openldap.t4hub.svc.cluster.local:389'
+LDAP_SERVER = 'tdslicerhub-openldap.apphub.svc.cluster.local:389'
 BIND_USER = 'cn=admin,dc=opendx,dc=org'
 BIND_PASSWORD = 'admin_pass'
 BASE_DN = 'dc=opendx,dc=org'

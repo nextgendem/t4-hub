@@ -5,14 +5,14 @@ data/certificates/
 
 proxy/nginx.conf
 
-t4hub/templates/index.html
+apphub/templates/index.html
 
 data/
 restar4testing.sh
 
 .devcontainer/
 
-t4hub/logs
+apphub/logs
 
 *.log
 .env

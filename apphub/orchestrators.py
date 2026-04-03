@@ -27,7 +27,7 @@ class IContainerOrchestrator(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_tdscontainers(self, prefix):
+    def get_app_containers(self, prefix):
         pass
 
     @abc.abstractmethod
@@ -95,7 +95,7 @@ class DockerCompose(IContainerOrchestrator):
     def get_valid_name(self, name):
         return name
 
-    def get_tdscontainers(self, prefix=""):
+    def get_app_containers(self, prefix=""):
         dc = docker.from_env()
         try:
             return [c.name for c in dc.containers.list(all) if c.name.startswith(prefix)]
@@ -221,22 +221,22 @@ class Kubernetes(IContainerOrchestrator):
 START
 minikube start
 cd /home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub
-kubectl delete -f t4hub/kubernetes/tdsh.yaml
+kubectl delete -f apphub/kubernetes/tdsh-old.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
 docker build -t localhost:5000/opendx28/tslicerh . (like that the image will work with registry like in production)
 docker run -d -p 5000:5000 --restart=always --name registry registry:2
 docker push localhost:5000/opendx28/tslicerh 
  eval $(minikube docker-env --unset)
-kubectl apply -f t4hub/kubernetes/tdsh.yaml
+kubectl apply -f apphub/kubernetes/tdsh-old.yaml
 
 DEPLOY / REDEPLOY
-kubectl delete -f t4hub/kubernetes/tdsh.yaml
+kubectl delete -f apphub/kubernetes/tdsh-old.yaml
 kubectl delete deployments -l app=slicer
 eval $(minikube docker-env)
 docker build -t opendx28/tslicerh .
  eval $(minikube docker-env --unset)
-kubectl apply -f t4hub/kubernetes/tdsh.yaml
+kubectl apply -f apphub/kubernetes/tdsh-old.yaml
 kubectl logs -f proxy-shub
 
 DEBUGGING
@@ -249,33 +249,33 @@ kubectl logs -f proxy-shub -c nginx-container
 URL OF THE SERVICE
 minikube service my-service --url
 
-kubectl delete -f t4hub/kubernetes/tdsh.yaml
+kubectl delete -f apphub/kubernetes/tdsh-old.yaml
 kubectl delete deployments -l app=slicer
 docker build -t opendx/tslicerh .
 minikube image load opendx/tslicerh
-kubectl apply -f t4hub/kubernetes/tdsh.yaml
+kubectl apply -f apphub/kubernetes/tdsh-old.yaml
 minikube service my-service --url
 kubectl logs -f proxy-shub -c 3dslicer-hub
 
-kubectl delete -f t4hub/kubernetes/tdsh.yaml
+kubectl delete -f apphub/kubernetes/tdsh-old.yaml
 kubectl delete deployments -l app=slicer
-kubectl apply -f t4hub/kubernetes/tdsh.yaml
+kubectl apply -f apphub/kubernetes/tdsh-old.yaml
 minikube service my-service --url
 kubectl logs -f proxy-shub -c 3dslicer-hub
 
-kubectl delete -f t4hub/kubernetes/tdsh.yaml
-kubectl apply -f t4hub/kubernetes/tdsh.yaml
+kubectl delete -f apphub/kubernetes/tdsh-old.yaml
+kubectl apply -f apphub/kubernetes/tdsh-old.yaml
 kubectl logs -f proxy-shub -c nginx-container
 
-kubectl delete -f t4hub/kubernetes/tdsh.yaml
+kubectl delete -f apphub/kubernetes/tdsh-old.yaml
 kubectl delete deployments -l app=slicer
-kubectl apply -f t4hub/kubernetes/tdsh.yaml
+kubectl apply -f apphub/kubernetes/tdsh-old.yaml
 kubectl logs -f proxy-shub -c nginx-container
 
     """
     def __init__(self):
-        self._port = 8080  # Slicer Hub backend internal port
-        self._app_label = "slicer"
+        self._port = 8080  # App Hub backend internal port
+        self._app_label = "t4"  # TODO It should be a parameter
 
     def get_valid_name(self, name):
         # Replace "_" by "-"
@@ -319,7 +319,7 @@ kubectl logs -f proxy-shub -c nginx-container
         ncores_cpu_limit = "15" # no podrá usar más de esto
         ncores_cpu_requested = "10" # cpu garanztizada
 
-
+        # TODO Add support for other mount types
         mount_type = "NFS"
         mount_nfs_base = "/mnt/opendx28"
         if mount_type == "NFS":
@@ -402,6 +402,7 @@ kubectl logs -f proxy-shub -c nginx-container
                    f"sed -i '/{src_code}/c\\{new_code}' /usr/share/kasmvnc/www/dist/main.bundle.js")
         patches = escape_for_yaml(patches)
 
+        # TODO Load the manifest from a file with replaceable strings
         # Generate a manifest file, apply it, remove the manifest
         _ = f"""
 apiVersion: apps/v1
@@ -472,9 +473,9 @@ spec:
             os.remove(f.name)
         return res
 
-    def get_tdscontainers(self, prefix):
+    def get_app_containers(self, prefix):
         """
-        Obtain 3d slicer instances, looking for Deployments (depends on the template launched with "_container_action")
+        Obtain App instances, looking for Deployments (depends on the template launched with "_container_action")
 
         :param prefix:
         :return:
@@ -581,7 +582,7 @@ spec:
     def stop_container(self, container_name):
         # First check the deployment exists
         cmd = ["get", "deployment", f"deploy-{container_name}"]
-        res = Kubernetes._exec_kubectl("Stop container, check dpl exists", cmd)
+        res = Kubernetes._exec_kubectl("Stop container, check deployment exists", cmd)
         if res is None:
             return False
         # Set the number of replicas to 0
@@ -592,7 +593,7 @@ spec:
     def restart_container(self, container_name):
         # First check the deployment exists
         cmd = ["get", "deployment", f"deploy-{container_name}"]
-        res = Kubernetes._exec_kubectl("Restart container, check dpl exists", cmd)
+        res = Kubernetes._exec_kubectl("Restart container, check deployment exists", cmd)
         if res is None:
             return
         # Set the number of replicas to 1
@@ -619,7 +620,7 @@ spec:
         NGINX and OpenLDAP; but may be others in the future
         :return:
         """
-        cmd = ["apply", "-f", "tdsh.yaml"]
+        cmd = ["apply", "-f", "tdsh-old.yaml"]
         return Kubernetes._exec_kubectl("Start base containers", cmd)
 
 
@@ -697,7 +698,7 @@ def docker_container_pct_activity(container_id_name):
     try:
         c = dc.containers.get(container_id_name)
         stats = container_stats(c.id)
-        from t4hub.helpers import calculate_cpu_percent
+        from apphub.helpers import calculate_cpu_percent
         return calculate_cpu_percent(stats)
     except:
         return -1
@@ -769,13 +770,14 @@ def create_image(image_name, image_tag):
     if image_full_name in tags:
         print(f"image {image_full_name} already in the system")
         return
+    # TODO Modify the criterion to have image built (instead of pulled)
     if image_full_name.startswith("opendx"):
-        from t4hub.main import (tdslicer_image_name, tdslicer_image_url,
-                                  base_vnc_image_name, base_vnc_image_url,  base_vnc_image_tag)
+        from apphub.main import (app_image_name, app_image_url,
+                                 base_vnc_image_name, base_vnc_image_url, base_vnc_image_tag)
         base_vnc_image_full_name = f"{base_vnc_image_name}:{base_vnc_image_tag}"
         if base_vnc_image_full_name not in tags:
             dc.images.build(path=base_vnc_image_url, tag=base_vnc_image_name)
-        dc.images.build(path=tdslicer_image_url, tag=tdslicer_image_name, buildargs={"BASE_IMAGE": "vnc-base:latest"})
+        dc.images.build(path=app_image_url, tag=app_image_name, buildargs={"BASE_IMAGE": "vnc-base:latest"})
         # TODO PUSH TO localhost:5000 respository (seams that is not supported)
     else:
         try:

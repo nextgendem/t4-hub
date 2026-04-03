@@ -1,6 +1,6 @@
-FROM python:3.10.7-slim-buster
+FROM python:3.11-bookworm
 
-# docker build -t opendx/tslicerh .
+# docker build -t app-hub .
 #
 # (if it complains with:
 #  error checking context: no permission to read from '/home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub/data/certificates/dhparam.pem'
@@ -25,7 +25,6 @@ RUN apt-get update && \
     libxslt-dev \
     zlib1g-dev \
     unzip \
-    python-pytest \
     && apt-get clean
 
 RUN curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl && \
@@ -54,7 +53,7 @@ CMD ["supervisord", "-c", "/etc/supervisord.conf"]
 
 EXPOSE 8080
 
-COPY t4hub_local.env /app/.env
+COPY app_hub_local.env /app/.env
 COPY users /app/user
 COPY proxy /app/proxy
-COPY t4hub /app/t4hub
+COPY apphub /app/apphub
