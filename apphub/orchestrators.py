@@ -83,7 +83,7 @@ class IContainerOrchestrator(abc.ABC):
     @abc.abstractmethod
     def start_base_containers(self):
         """
-        NGINX ; but may be others in the future
+        NGINX and OpenLDAP; but may be others in the future
         :return:
         """
         pass
@@ -527,12 +527,21 @@ kubectl logs -f proxy-shub -c nginx-container
         return self._port
 
     def get_container_status(self, container_name):
+        # First try to get the pod directly by name (for infrastructure pods like proxy-app-hub)
+        cmd = ["get", "pod", container_name]
+        res = Kubernetes._exec_kubectl("Get POD status by name", cmd, "wide")
+        if res is not None:
+            _ = res[0]["STATUS"]
+            print(f"Status (by name): {_}")
+            return _
+
+        # Fall back to label-based search (for user session pods)
         cmd = ["get", "pod", "-l", f"app-user={container_name}"]
-        res = Kubernetes._exec_kubectl("Get POD status", cmd, "wide")
+        res = Kubernetes._exec_kubectl("Get POD status by label", cmd, "wide")
         if res is None:
             return "DoesNotExist"
         _ = res[0]["STATUS"]
-        print(f"Status: {_}")
+        print(f"Status (by label): {_}")
         return _
 
     async def start_container(self, container_name, image_name, image_tag,
@@ -600,7 +609,7 @@ kubectl logs -f proxy-shub -c nginx-container
 
     def start_base_containers(self):
         """
-        NGINX ; but may be others in the future
+        NGINX and OpenLDAP; but may be others in the future
         :return:
         """
         cmd = ["apply", "-f", "tdsh-old.yaml"]
