@@ -11,6 +11,7 @@ from io import StringIO
 
 import docker
 import yaml
+from jinja2 import Template
 from docker.errors import APIError
 from python_on_whales import docker as docker_ow
 import pandas as pd
@@ -276,6 +277,7 @@ kubectl logs -f proxy-shub -c nginx-container
     def __init__(self):
         self._port = 8080  # App Hub backend internal port
         self._app_label = "t4"  # TODO It should be a parameter
+        self._template_file = os.getenv("APP_MANIFEST_TEMPLATE", "app-deployment-template2.yaml")
 
     def get_valid_name(self, name):
         # Replace "_" by "-"
@@ -305,7 +307,7 @@ kubectl logs -f proxy-shub -c nginx-container
         try:
             if output_type is None or output_type.lower() == "wide":
                 # Parse string as a list of dictionaries
-                df = pd.read_table(StringIO(_), delimiter='\s\s+', engine="python")
+                df = pd.read_table(StringIO(_), delimiter=r'\s\s+', engine="python")
                 return df.to_dict("records")
             elif output_type.lower() == "json":
                 return json.loads(_)
@@ -322,7 +324,9 @@ kubectl logs -f proxy-shub -c nginx-container
         # TODO Add support for other mount types
         mount_type = "NFS"
         mount_nfs_base = "/mnt/opendx28"
-        if mount_type == "NFS":
+        container_vols = ""
+        container_vol_mounts = ""
+        if mount_type == "NFS" and vol_dict is not None:
             # Assume NODES have an NFS mount point with the same name in all nodes
             b_dir = f"{mount_nfs_base}/{container_name}/"
             # "volumes"
@@ -402,61 +406,21 @@ kubectl logs -f proxy-shub -c nginx-container
                    f"sed -i '/{src_code}/c\\{new_code}' /usr/share/kasmvnc/www/dist/main.bundle.js")
         patches = escape_for_yaml(patches)
 
-        # TODO Load the manifest from a file with replaceable strings
-        # Generate a manifest file, apply it, remove the manifest
-        _ = f"""
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: deploy-{container_name}
-  labels:
-    app: {self._app_label}
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app-user: {container_name}
-  template:
-    metadata:
-      labels:
-        app: {self._app_label}
-        app-user: {container_name}
-    spec:
-      volumes:
-{container_vols}    
-        - name: config
-          hostPath:
-            path: {mount_nfs_base}/config-3dslicerhub
-            type: Directory        
-      containers:
-      - name: {container_name}
-        image: {image_name}
-        imagePullPolicy: Always
-        lifecycle:
-          postStart:
-            exec:
-              command: ["/bin/sh", "-c", "{patches}"]
-        securityContext:
-          runAsUser: 0 # Run as root user
-        resources:
-{limits}
-            requests:
-{cpu_requested}
-        env:
-          - name: VNC_DISABLE_AUTH
-            value: "true"
-          - name: VNC_ALLOW_CLIENT_TO_OVERRIDE_VNC_SETTINGS
-            value: "true"
-        volumeMounts:
-          - name: config
-            mountPath: /etc/kasmvnc/
-{container_vol_mounts}        
-        ports:
-        - containerPort: 6901
-        - containerPort: 8085
-{gpu_toleration}
-                
-        """
+        # Load the manifest from a file with replaceable strings
+        with open(self._template_file, 'r') as f:
+            template = Template(f.read())
+            _ = template.render(
+                container_name=container_name,
+                app_label=self._app_label,
+                container_vols=container_vols,
+                mount_nfs_base=mount_nfs_base,
+                image_name=image_name,
+                patches=patches,
+                limits=limits,
+                cpu_requested=cpu_requested,
+                container_vol_mounts=container_vol_mounts,
+                gpu_toleration=gpu_toleration
+            )
 
         # Write string to a temporary file
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
