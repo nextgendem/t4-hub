@@ -17,14 +17,10 @@ spec:
     spec:
       volumes:
 {{container_vols}}
-        - name: config
-          hostPath:
-            path: {{mount_nfs_base}}/config-apphub
-            type: Directory
       containers:
       - name: {{container_name}}
         image: {{image_name}}
-        imagePullPolicy: Always
+        imagePullPolicy: Never
         lifecycle:
           postStart:
             exec:
@@ -41,8 +37,6 @@ spec:
         - name: VNC_ALLOW_CLIENT_TO_OVERRIDE_VNC_SETTINGS
           value: "true"
         volumeMounts:
-          - name: config
-            mountPath: /etc/kasmvnc/
 {{container_vol_mounts}}
         ports:
         - containerPort: 6901

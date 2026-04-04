@@ -95,6 +95,8 @@ spec:
           value: "postgres"
         - name: POSTGRES_DB
           value: "sessions_db"
+        - name: PGDATA
+          value: "/var/lib/postgresql/data/pgdata"
         ports:
         - containerPort: 5432
         volumeMounts:
@@ -131,8 +133,8 @@ metadata:
   namespace: default
   labels:
     app: app-hub
-    # Label used by get_container_ip in helpers.py
-    app-user: t4hub-container
+    # Label for same-pod networking - matches APP_HUB_NAME in app_hub_local.env
+    app-user: localhost
 spec:
   serviceAccountName: internal-kubectl
   restartPolicy: OnFailure
@@ -183,6 +185,8 @@ spec:
       env:
       - name: ENV_FILE
         value: "/app/app_hub_local.env"
+      - name: POD_NAME
+        value: "proxy-app-hub"
       volumeMounts:
         - mountPath: /app/proxy
           name: nginx-conf
@@ -195,6 +199,9 @@ spec:
         - mountPath: /app/app_hub_local.env
           name: source-code
           subPath: app_hub_local.env
+        - mountPath: /app/app-deployment-template2.yaml
+          name: source-code
+          subPath: app-deployment-template2.yaml
       resources:
         requests:
           memory: "256Mi"
@@ -209,7 +216,7 @@ spec:
       imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 80
-        name: http
+        name: http-proxy
       volumeMounts:
         - mountPath: /etc/nginx
           name: nginx-conf

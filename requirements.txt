@@ -8,7 +8,7 @@ pydantic~=1.10.2  # Asegura compatibilidad con FastAPI
 docker
 jinja2~=3.1.2
 python_on_whales~=0.55.0  # Asegúrate de que esta versión sea compatible con tu uso de Docker
-ldap3~=2.9.1
+#ldap3~=2.9.1
 python-dotenv~=0.21.0
 kubernetes~=26.1.0  # Versión actualizada compatible con Python 3.10
 starlette~=0.20.4

@@ -53,17 +53,17 @@ CONTAINER_ORCHESTRATOR="docker_compose"
 
 In the `.env` file, change the project path `SCRIPT_DIR="/path/to/your/project/t4-hub"` to the local path to the project.
 
-Run Docker Compose, but only the proxy and openldap services, executing:
+Run Docker Compose, but only the proxy service, executing:
 
 ```bash
-docker compose up -d openldap proxy
+docker compose up -d proxy
 ```
 
 Run `main.py` in debugging mode.
 
 The service will be available at `localhost:8000`.
 
-To access the session without LDAP, use any user starting with __free_user__ and password __test__.
+To access the session use any user starting with __free_user__ and password __test__.
 
 ### Running with Kubernetes
 
@@ -267,7 +267,7 @@ kubectl delete -f apphub/kubernetes/<manifest>.yaml
 
 ## Features
 
-- **Login:** Provides a login page connected to an LDAP server.
+- **Login:** Provides a login page.
 - **Launching Transformer-4 Instances:** Allows users to start Transformer-4 instances with specific configurations in the future.
 - **Instance Management:** Ability to stop unused Transformer-4 instances.
 - **Integration with a Reverse Proxy:** Provides a single entry point for users.

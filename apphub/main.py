@@ -1,6 +1,6 @@
 """
 3DSlicer Hub aims to imitate the functionality of JupyterHub, but for 3DSlicer:
-  - Provide a login mechanism and a login page (ideally connected to an LDAP server)
+  - Provide a login mechanism and a login page
   - Provide a way to launch 3DSlicer instances (in the future with a specific configuration)
   - Stop unused 3DSlicer instances
   - Integrate with a reverse proxy providing a single entry point for the users
@@ -111,7 +111,7 @@ if co_str == "docker_compose":
         logger.setLevel(logging.DEBUG)  # 2
 elif co_str == "kubernetes":
     network_id = 0  # TODO Create network in kubernetes, obtain its id
-    CONTAINER_NAME_PREFIX = "slicer-"
+    CONTAINER_NAME_PREFIX = os.getenv("CONTAINER_NAME_PREFIX", "app-")
 
     # logger = logging.getLogger(__name__)  # 1
     logger.setLevel(logging.DEBUG)  # 2
@@ -263,7 +263,7 @@ async def check_credentials(user, password):
 
 
 async def can_open_session(user):
-    return True  # TODO LDAP
+    return True  # TODO Authentication
 
 # Replace these with your own values from the Google Developer Console
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
@@ -606,6 +606,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
             with db_access_lock:
                 session = orm_session_maker()
                 container_launched = False
+                session_uuid = None
                 try:
                     s = session.query(AppSession).filter(AppSession.user == username).first()
                     if not s:
@@ -639,6 +640,8 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                                                               <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
                                                               </body>
                                                             </html>""", status_code=401)
+                    # Save UUID before closing session
+                    session_uuid = s.uuid
                 except exc.SQLAlchemyError as e:
                     if container_launched:
                         stop_remove_container(s.container_name)
@@ -647,7 +650,9 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                 finally:
                     session.close()
 
-            return RedirectResponse(url=f"/sessions/{s.uuid}?page=main", status_code=302)
+            response = RedirectResponse(url=f"/sessions/{session_uuid}?page=main", status_code=302)
+            response.set_cookie(key="source", value=session_uuid)
+            return response
     else:
         return HTMLResponse(content="""<!DOCTYPE html>
                                         <html>

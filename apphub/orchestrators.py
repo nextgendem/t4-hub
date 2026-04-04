@@ -83,7 +83,7 @@ class IContainerOrchestrator(abc.ABC):
     @abc.abstractmethod
     def start_base_containers(self):
         """
-        NGINX and OpenLDAP; but may be others in the future
+        NGINX ; but may be others in the future
         :return:
         """
         pass
@@ -372,9 +372,10 @@ kubectl logs -f proxy-shub -c nginx-container
             nvidia_gpu =""
             gpu_toleration=""
 
-        indent = " "*16
-        cpu_limit = f'{indent}cpu: "{ncores_cpu_limit}"'
-        cpu_requested = f'{indent}cpu: "{ncores_cpu_requested}"'
+        indent_resource = " " * 10  # Indentation for limits/requests under resources
+        indent_field = " " * 12     # Indentation for cpu/gpu under limits
+        cpu_limit = f'{indent_field}cpu: "{ncores_cpu_limit}"'
+        cpu_requested = f'{indent_field}cpu: "{ncores_cpu_requested}"'
 
 
         if "cpusinlimite" in container_name:
@@ -384,11 +385,9 @@ kubectl logs -f proxy-shub -c nginx-container
         if nvidia_gpu=="" and cpu_limit=="":
             limits = ""
         else:
-            limits = f"""
-{" " * 12}limits:
+            limits = f"""{indent_resource}limits:
 {cpu_limit}
-{nvidia_gpu}                
-                    """
+{nvidia_gpu}"""
 
         def escape_for_sed_origin(text):
             """ Escapes special characters in a string for use with sed, including single quotes. """
@@ -595,12 +594,13 @@ kubectl logs -f proxy-shub -c nginx-container
 
     def execute_cmd_in_nginx_container(self, container_name, cmd):
         # "container_name" is ignored, always "nginx-container"
-        _ = ["exec", "proxy-shub", "-c", "nginx-container", "--"] + ["sh", "-c", cmd]
+        pod_name = os.getenv("POD_NAME", "proxy-app-hub")
+        _ = ["exec", pod_name, "-c", "nginx-container", "--"] + ["sh", "-c", cmd]
         return Kubernetes._exec_kubectl("Exec command in NGINX container", _)
 
     def start_base_containers(self):
         """
-        NGINX and OpenLDAP; but may be others in the future
+        NGINX ; but may be others in the future
         :return:
         """
         cmd = ["apply", "-f", "tdsh-old.yaml"]
