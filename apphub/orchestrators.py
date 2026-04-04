@@ -278,6 +278,12 @@ kubectl logs -f proxy-shub -c nginx-container
         self._port = 8080  # App Hub backend internal port
         self._app_label = "t4"  # TODO It should be a parameter
         self._template_file = os.getenv("APP_MANIFEST_TEMPLATE", "app-deployment-template2.yaml")
+        # Storage configuration
+        self._storage_type = os.getenv("STORAGE_TYPE", "hostPath")
+        self._storage_base = os.getenv("STORAGE_BASE_PATH", "/tmp/t4hub-storage")
+        self._nfs_server = os.getenv("NFS_SERVER", None)
+        self._storage_class = os.getenv("STORAGE_CLASS", "gp3")
+        self._namespace = os.getenv("K8S_NAMESPACE", "default")
 
     def get_valid_name(self, name):
         # Replace "_" by "-"
@@ -321,22 +327,35 @@ kubectl logs -f proxy-shub -c nginx-container
         ncores_cpu_limit = "15" # no podrá usar más de esto
         ncores_cpu_requested = "10" # cpu garanztizada
 
-        # TODO Add support for other mount types
-        mount_type = "NFS"
-        mount_nfs_base = "/mnt/opendx28"
+        # Use storage abstraction module to generate volumes
+        from apphub.storage import get_storage_config, ensure_local_storage_directories
+
         container_vols = ""
         container_vol_mounts = ""
-        if mount_type == "NFS" and vol_dict is not None:
-            # Assume NODES have an NFS mount point with the same name in all nodes
-            b_dir = f"{mount_nfs_base}/{container_name}/"
-            # "volumes"
-            _ = "\n".join([f"- name: vol-{container_name}-{i}\n  hostPath:\n    path: {b_dir}{i}" for i, (k, v) in enumerate(vol_dict.items())])
+        if vol_dict is not None:
+            # Generate volume specs based on configured storage type
+            volumes_yaml, volume_mounts_yaml = get_storage_config(
+                storage_type=self._storage_type,
+                container_name=container_name,
+                vol_dict=vol_dict,
+                base_path=self._storage_base,
+                nfs_server=self._nfs_server,
+                storage_class=self._storage_class,
+                namespace=self._namespace
+            )
+
+            # Indent for template insertion
             indentation = 8
-            container_vols = textwrap.indent(_, " " * indentation)
-            # "volumeMounts"
-            _ = "\n".join([f"- name: vol-{container_name}-{i}\n  mountPath: \"{v['bind']}\"" for i, (k, v) in enumerate(vol_dict.items())])
+            container_vols = textwrap.indent(volumes_yaml, " " * indentation)
             indentation = 10
-            container_vol_mounts = textwrap.indent(_, " " * indentation)
+            container_vol_mounts = textwrap.indent(volume_mounts_yaml, " " * indentation)
+
+            # For hostPath storage, ensure directories exist before pod creation
+            if self._storage_type == "hostPath":
+                try:
+                    ensure_local_storage_directories(container_name, vol_dict, self._storage_base)
+                except Exception as e:
+                    logger.warning(f"Could not create storage directories: {e}")
 
         if use_gpu:
             indent = " "*16
@@ -413,7 +432,7 @@ kubectl logs -f proxy-shub -c nginx-container
                 container_name=container_name,
                 app_label=self._app_label,
                 container_vols=container_vols,
-                mount_nfs_base=mount_nfs_base,
+                mount_nfs_base=self._storage_base,  # Use configured storage base path
                 image_name=image_name,
                 patches=patches,
                 limits=limits,

@@ -54,6 +54,5 @@ CMD ["supervisord", "-c", "/etc/supervisord.conf"]
 EXPOSE 8080
 
 COPY app_hub_local.env /app/.env
-COPY users /app/user
 COPY proxy /app/proxy
 COPY apphub /app/apphub

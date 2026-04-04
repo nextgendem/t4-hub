@@ -1,0 +1,400 @@
+# T4-Hub Kubernetes Manifest for AWS EKS Deployment
+#
+# This manifest deploys t4-hub to AWS EKS with production configuration.
+#
+# Key Features:
+# - Uses EBS-backed PersistentVolumeClaims for storage
+# - ECR for container images
+# - ALB Ingress for external access
+# - Production-grade resource limits
+# - Dedicated namespace
+#
+# Prerequisites:
+# 1. EKS cluster with kubectl configured
+# 2. EBS CSI driver installed: https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html
+# 3. AWS Load Balancer Controller: https://docs.aws.amazon.com/eks/latest/userguide/aws-load-balancer-controller.html
+# 4. Images pushed to ECR
+# 5. cert-manager (optional, for TLS)
+#
+# Deploy with:
+#   kubectl create namespace t4hub-prod
+#   kubectl apply -f apphub/kubernetes/eks.yaml
+
+---
+# Namespace for t4hub production
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: t4hub-prod
+
+---
+# ServiceAccount for app-hub to execute kubectl commands
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: internal-kubectl
+  namespace: t4hub-prod
+
+---
+# Role allowing app-hub to manage pods and deployments
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: modify-pods
+  namespace: t4hub-prod
+rules:
+  - apiGroups: ["", "metrics.k8s.io"]
+    resources:
+      - pods
+      - pods/exec
+    verbs:
+      - get
+      - create
+      - list
+      - delete
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments/scale
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+# RoleBinding to grant permissions to ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: modify-pods-to-sa
+  namespace: t4hub-prod
+subjects:
+  - kind: ServiceAccount
+    name: internal-kubectl
+    namespace: t4hub-prod
+roleRef:
+  kind: Role
+  name: modify-pods
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# StorageClass for EBS gp3 volumes
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: t4hub-ebs-gp3
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  iops: "3000"
+  throughput: "125"
+  encrypted: "true"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+
+---
+# PVC for shared config directory
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: t4hub-config-pvc
+  namespace: t4hub-prod
+  labels:
+    app: t4hub
+    component: config
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: t4hub-ebs-gp3
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# PVC for PostgreSQL data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-data-pvc
+  namespace: t4hub-prod
+  labels:
+    app: postgresql
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: t4hub-ebs-gp3
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+# PostgreSQL Deployment with EBS storage
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+  namespace: t4hub-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      containers:
+      - name: postgresql
+        image: postgres:15
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secret
+              key: password
+        - name: POSTGRES_DB
+          value: "sessions_db"
+        - name: PGDATA
+          value: "/var/lib/postgresql/data/pgdata"
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "2000m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: postgresql-data-pvc
+
+---
+# PostgreSQL Service (ClusterIP)
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: t4hub-prod
+spec:
+  selector:
+    app: postgresql
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+  type: ClusterIP
+
+---
+# Secret for PostgreSQL password (CHANGE IN PRODUCTION!)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgresql-secret
+  namespace: t4hub-prod
+type: Opaque
+stringData:
+  password: "changeme_in_production"
+
+---
+# Main Hub Pod with app-hub and nginx containers
+apiVersion: v1
+kind: Pod
+metadata:
+  name: proxy-app-hub
+  namespace: t4hub-prod
+  labels:
+    app: app-hub
+    # Label used by get_container_ip in helpers.py
+    app-user: t4hub-container
+spec:
+  serviceAccountName: internal-kubectl
+  restartPolicy: OnFailure
+  volumes:
+    # Shared volume for nginx.conf between app-hub and nginx containers
+    - name: nginx-conf
+      emptyDir: {}
+    # Shared config directory for app containers (EBS PVC)
+    - name: config
+      persistentVolumeClaim:
+        claimName: t4hub-config-pvc
+
+  initContainers:
+    # Initialize empty nginx.conf file
+    - name: init-nginx-conf
+      image: busybox:latest
+      imagePullPolicy: IfNotPresent
+      command:
+        - /bin/sh
+        - -c
+        - |
+          mkdir -p /etc/nginx/conf.d
+          echo 'events { } http { }' > /etc/nginx/nginx.conf
+          cp /etc/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+      volumeMounts:
+      - name: nginx-conf
+        mountPath: /etc/nginx
+
+  containers:
+    # App-hub container (FastAPI backend)
+    - name: app-hub
+      # TODO: Replace with your ECR repository URL
+      image: 474930672109.dkr.ecr.eu-west-1.amazonaws.com/t4hub/app-hub:latest
+      imagePullPolicy: Always
+      ports:
+      - containerPort: 8080
+        name: http
+      env:
+      - name: ENV_FILE
+        value: "/app/app_hub_eks.env"
+      - name: K8S_NAMESPACE
+        value: "t4hub-prod"
+      - name: STORAGE_TYPE
+        value: "ebs"
+      - name: STORAGE_CLASS
+        value: "t4hub-ebs-gp3"
+      - name: DB_CONNECTION_STRING
+        valueFrom:
+          secretKeyRef:
+            name: app-hub-secret
+            key: db_connection_string
+      volumeMounts:
+        - mountPath: /app/proxy
+          name: nginx-conf
+      resources:
+        requests:
+          memory: "1Gi"
+          cpu: "2000m"
+        limits:
+          memory: "4Gi"
+          cpu: "8000m"
+      livenessProbe:
+        httpGet:
+          path: /
+          port: 8080
+        initialDelaySeconds: 60
+        periodSeconds: 30
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 8080
+        initialDelaySeconds: 10
+        periodSeconds: 10
+
+    # Nginx container (reverse proxy)
+    - name: nginx-container
+      image: nginx:latest
+      imagePullPolicy: IfNotPresent
+      ports:
+      - containerPort: 80
+        name: http
+      volumeMounts:
+        - mountPath: /etc/nginx
+          name: nginx-conf
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "250m"
+        limits:
+          memory: "512Mi"
+          cpu: "1000m"
+      livenessProbe:
+        httpGet:
+          path: /
+          port: 80
+        initialDelaySeconds: 10
+        periodSeconds: 10
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 80
+        initialDelaySeconds: 5
+        periodSeconds: 5
+
+---
+# Secret for app-hub configuration (CREATE MANUALLY IN PRODUCTION!)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-hub-secret
+  namespace: t4hub-prod
+type: Opaque
+stringData:
+  db_connection_string: "postgresql://postgres:changeme_in_production@postgresql:5432/sessions_db"
+  # Add other sensitive config here
+
+---
+# Service for app-hub (ClusterIP, accessed via Ingress)
+apiVersion: v1
+kind: Service
+metadata:
+  name: apphub-svc-cluster
+  namespace: t4hub-prod
+spec:
+  type: ClusterIP
+  selector:
+    app: app-hub
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+
+---
+# Ingress using AWS Load Balancer Controller
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: apphub-ingress
+  namespace: t4hub-prod
+  annotations:
+    # AWS Load Balancer Controller annotations
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # Optional: Use ACM certificate for HTTPS
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/xxx
+    # Optional: cert-manager annotation (if using cert-manager instead of ACM)
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: alb
+  # Uncomment if using cert-manager
+  # tls:
+  # - hosts:
+  #   - t4hub.yourdomain.com
+  #   secretName: t4hub-tls-cert
+  rules:
+  - host: t4hub.yourdomain.com  # CHANGE THIS
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: apphub-svc-cluster
+            port:
+              number: 80
