@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: apphub-svc-cluster
+spec:
+  type: ClusterIP
+  selector:
+    app: app-hub
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: apphub-ingress
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # Optional: Use ACM certificate for HTTPS
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/xxx
+spec:
+  ingressClassName: alb
+  rules:
+  - host: t4hub.yourdomain.com   # CHANGE THIS
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: apphub-svc-cluster
+            port:
+              number: 80

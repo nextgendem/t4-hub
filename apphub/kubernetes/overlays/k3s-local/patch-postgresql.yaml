@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+spec:
+  template:
+    spec:
+      volumes:
+      - $patch: replace
+      - name: postgres-data
+        hostPath:
+          path: /tmp/t4hub-storage/postgres-data
+          type: DirectoryOrCreate

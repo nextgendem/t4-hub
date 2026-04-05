@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: apphub-svc
+spec:
+  type: LoadBalancer
+  # k3s supports LoadBalancer natively via its built-in ServiceLB (Klipper).
+  # The external IP will be the node's IP once the service is assigned.

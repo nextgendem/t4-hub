@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: proxy-app-hub
+spec:
+  volumes:
+    - $patch: replace
+    - name: nginx-conf
+      emptyDir: {}
+    - name: srv
+      hostPath:
+        path: /var/lib/t4hub-storage/srv
+        type: DirectoryOrCreate
+  containers:
+    - name: app-hub
+      imagePullPolicy: IfNotPresent
+      env:
+      - name: ENV_FILE
+        value: "/app/app_hub_k3s_remote.env"
+      - name: K8S_NAMESPACE
+        value: "t4hub"
+      - name: STORAGE_BASE_PATH
+        value: "/var/lib/t4hub-storage"
+      volumeMounts:
+        - mountPath: /app/proxy
+          name: nginx-conf
+        - mountPath: /srv
+          name: srv
+      resources:
+        requests:
+          memory: "512Mi"
+          cpu: "1000m"
+        limits:
+          memory: "2Gi"
+          cpu: "4000m"
+    - name: nginx-container
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "200m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
