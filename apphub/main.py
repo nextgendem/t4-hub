@@ -1,10 +1,10 @@
 """
-3DSlicer Hub aims to imitate the functionality of JupyterHub, but for 3DSlicer:
+App Hub aims to imitate the functionality of JupyterHub, but for Desktop Apps which will be executed in a server and used through VNC in a browser:
   - Provide a login mechanism and a login page
-  - Provide a way to launch 3DSlicer instances (in the future with a specific configuration)
-  - Stop unused 3DSlicer instances
+  - Provide a way to launch Desktop App instances
+  - Stop unused instances
   - Integrate with a reverse proxy providing a single entry point for the users
-  - Provide a way to share 3DSlicer instances
+  - Provide a way to share App instances (for education or collaboration purposes)
   - Persistent storage for new containers
 
   Documentation:
@@ -200,7 +200,7 @@ http {{
 
     async def command_nginx_to_read_configuration(nginx_cont_name):
         """
-        Given the name of the NGINX container used as reverse proxy for 3DSlicer sessions,
+        Given the name of the NGINX container used as reverse proxy for Desktop App sessions,
         command it to reread the configuration.
         """
         tries = 0
@@ -513,7 +513,7 @@ async def auth_google(code: str,request: Request):
                         s.last_activity = datetime.datetime.now()
                         s.gpu = gpu
                         s.url_path = f"/{s.uuid}/"
-                        # Launch new 3d slicer container (it also sets the "container_name" field)
+                        # Launch new app-through-VNC-in-browser container (it also sets the "container_name" field)
                         await launch_app_web_container(s)
                         container_launched = True
                         pct = container_orchestrator.get_container_activity(s.container_name)
@@ -589,7 +589,7 @@ async def auth_google(code: str,request: Request):
                                           </body>
                                         </html>""", status_code=401)
     
-# Start (or resume) 3DSlicer session
+# Start (or resume) session
 # OBSOLETE: Login via form
 # ID = username
 
@@ -620,7 +620,7 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
                             s.last_activity = datetime.datetime.now()
                             s.gpu = gpu
                             s.url_path = f"/{s.uuid}/"
-                            # Launch new 3d slicer container (it also sets the "container_name" field)
+                            # Launch new app-through-VNC-in-browser container (it also sets the "container_name" field)
                             await launch_app_web_container(s)
                             container_launched = True
                             pct = container_orchestrator.get_container_activity(s.container_name)
@@ -713,15 +713,6 @@ async def get_session_management_page(request: Request, session_id: str, page):
                  sess_user=s.user,
                  sess_email=s.email,
                  sess_shared=s.info['shared'])
-    # n = 0
-    # while True:
-    #     container_status = container_orchestrator.get_container_status(s.container_name)
-    #     if container_status == "Status: Running":
-    #         break
-    #     if n == 10:
-    #         container_status = "can't initiate 3dSlicer"
-    #     await time.sleep(1)
-    #     n = + 1
 
     with db_access_lock:
         session = orm_session_maker()
@@ -780,15 +771,6 @@ async def get_session_management_page(request: Request, session_id: str, page):
                  sess_user=s.user,
                  sess_email=s.email,
                  sess_shared=s.info['shared'])
-    # n = 0
-    # while True:
-    #     container_status = container_orchestrator.get_container_status(s.container_name)
-    #     if container_status == "Status: Running":
-    #         break
-    #     if n == 10:
-    #         container_status = "can't initiate 3dSlicer"
-    #     await time.sleep(1)
-    #     n = + 1
 
     with db_access_lock:
         session = orm_session_maker()
@@ -1155,7 +1137,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
     <div class="d-flex bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
         <div class="d-flex flex-column mb-2 mx-3 justify-center align-items-center"">
             <label class="block text-sm blue-500 hover:blue-700 mb-2">
-                <a onclick="openUrl('{s_local.url_path}', 'Slicer')" href="#" class="d-flex flex-column align-items-center">
+                <a onclick="openUrl('{s_local.url_path}', 'Transformer4')" href="#" class="d-flex flex-column align-items-center">
                     <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="black" class="bi bi-display" viewBox="0 0 16 16">
 		            <path d="M0 4s0-2 2-2h12s2 0 2 2v6s0 2-2 2h-4q0 1 .25 1.5H11a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1h.75Q6 13 6 12H2s-2 0-2-2zm1.398-.855a.76.76 0 0 0-.254.302A1.5 1.5 0 0 0 1 4.01V10c0 .325.078.502.145.602q.105.156.302.254a1.5 1.5 0 0 0 .538.143L2.01 11H14c.325 0 .502-.078.602-.145a.76.76 0 0 0 .254-.302 1.5 1.5 0 0 0 .143-.538L15 9.99V4c0-.325-.078-.502-.145-.602a.76.76 0 0 0-.302-.254A1.5 1.5 0 0 0 13.99 3H2c-.325 0-.502.078-.602.145"/>
 		            </svg>
@@ -1318,7 +1300,7 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
 
 async def launch_app_web_container(s: AppSession):
     """
-    Launch a AppSlicer web container
+    Launch a app-through-VNC-in-browser container
     """
     # just one container per user
     container_name = CONTAINER_NAME_PREFIX + container_orchestrator.get_valid_name(s.user)
@@ -1395,10 +1377,10 @@ class BackgroundRunner:
         # ---- sessions_checker ----------------------------------------------------------------------------------------
         logger.info("::::::::::::::::::::::: Session Checker :::::::::::::::::::::::::::::::::::")
 
-        tdslicer_containers = container_orchestrator.get_app_containers(CONTAINER_NAME_PREFIX)
+        app_containers = container_orchestrator.get_app_containers(CONTAINER_NAME_PREFIX)
 
-        # Reassociate, restart or delete 3D Slicer Sessions if we are back from a restart of the container
-        # Restart relaunches 3DSlicer ("restart" is always False, so this is disabled currently)
+        # Reassociate, restart or delete Sessions if we are back from a restart of the container
+        # Restart relaunches app-through-VNC-in-browser ("restart" is always False, so this is disabled currently)
         # Delete
         with db_access_lock:
             sess = sm()
@@ -1421,12 +1403,12 @@ class BackgroundRunner:
                     if s.restart:
                         logger.info(f"::::::::::::::::: sessions_checker - reassociating session {s.user} with container {s.container_name}")
                         s.info['CPU_pct'] = ACTIVITY_THRESHOLD + 1
-                        tdslicer_containers.remove(s.container_name)  # Do not delete this container
+                        app_containers.remove(s.container_name)  # Do not delete this container
                         sess.add(s)
                     else:
                         logger.info(f"::::::::::::::::: sessions_checker - removing container and session for {s.user}, with container {s.container_name}")
                         stop_remove_container(s.container_name)
-                        tdslicer_containers.remove(s.container_name)
+                        app_containers.remove(s.container_name)
                         sess.delete(s)
                 flag_modified(s, "info")
 
@@ -1435,8 +1417,8 @@ class BackgroundRunner:
         # Update nginx.conf and reread Nginx configuration
         await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, app_hub_address)
 
-        # Remove dangling 3dslicer containers managed by 3dslicer-hub
-        for name in tdslicer_containers:
+        # Remove dangling app-through-VNC-in-browser containers managed by app-hub
+        for name in app_containers:
             if name.startswith(CONTAINER_NAME_PREFIX):
                 logger.info(f"::::::::::::::::: sessions_checker - removing container {name} with no associated session")
                 stop_remove_container(name)
@@ -1450,7 +1432,7 @@ class BackgroundRunner:
                 # Loop all sessions, remove those that are not in use
                 for s in sess.query(AppSession).all():
                     print(f"Session - Name: {s.container_name};\n UUID: {s.uuid};\n User: {s.user}\n")
-                    stop = await check_session_activity(s)  # Implicit parameter: "s" (3dslicer session)
+                    stop = await check_session_activity(s)  # Implicit parameter: "s" (session)
                     sess.add(s)
                     if stop:
                         logger.info(f"::::::::::::::::: sessions_checker - inactivity cleanup - stopping container {s.container_name}")

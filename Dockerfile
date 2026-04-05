@@ -3,8 +3,8 @@ FROM python:3.11-bookworm
 # docker build -t app-hub .
 #
 # (if it complains with:
-#  error checking context: no permission to read from '/home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub/data/certificates/dhparam.pem'
-#  --> sudo chown -R rnebot data/
+#  error checking context: no permission to read from '.../data/certificates/dhparam.pem'
+#  --> sudo chown -R <user>> data/
 # )
 
 # NORMAL

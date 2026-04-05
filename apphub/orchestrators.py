@@ -218,62 +218,6 @@ class DockerCompose(IContainerOrchestrator):
 
 
 class Kubernetes(IContainerOrchestrator):
-    """
-START
-minikube start
-cd /home/rnebot/GoogleDrive/AA_OpenDx28/3dslicerhub
-kubectl delete -f apphub/kubernetes/tdsh-old.yaml
-kubectl delete deployments -l app=slicer
-eval $(minikube docker-env)
-docker build -t localhost:5000/opendx28/tslicerh . (like that the image will work with registry like in production)
-docker run -d -p 5000:5000 --restart=always --name registry registry:2
-docker push localhost:5000/opendx28/tslicerh 
- eval $(minikube docker-env --unset)
-kubectl apply -f apphub/kubernetes/tdsh-old.yaml
-
-DEPLOY / REDEPLOY
-kubectl delete -f apphub/kubernetes/tdsh-old.yaml
-kubectl delete deployments -l app=slicer
-eval $(minikube docker-env)
-docker build -t opendx28/tslicerh .
- eval $(minikube docker-env --unset)
-kubectl apply -f apphub/kubernetes/tdsh-old.yaml
-kubectl logs -f proxy-shub
-
-DEBUGGING
-kubectl logs -f proxy-shub -c 3dslicer-hub
-kubectl exec -ti proxy-shub -c 3dslicer-hub -- bash
-kubectl get pods -l app=slicer -o wide
-kubectl exec -ti proxy-shub -c nginx-container -- bash
-kubectl logs -f proxy-shub -c nginx-container
-
-URL OF THE SERVICE
-minikube service my-service --url
-
-kubectl delete -f apphub/kubernetes/tdsh-old.yaml
-kubectl delete deployments -l app=slicer
-docker build -t opendx/tslicerh .
-minikube image load opendx/tslicerh
-kubectl apply -f apphub/kubernetes/tdsh-old.yaml
-minikube service my-service --url
-kubectl logs -f proxy-shub -c 3dslicer-hub
-
-kubectl delete -f apphub/kubernetes/tdsh-old.yaml
-kubectl delete deployments -l app=slicer
-kubectl apply -f apphub/kubernetes/tdsh-old.yaml
-minikube service my-service --url
-kubectl logs -f proxy-shub -c 3dslicer-hub
-
-kubectl delete -f apphub/kubernetes/tdsh-old.yaml
-kubectl apply -f apphub/kubernetes/tdsh-old.yaml
-kubectl logs -f proxy-shub -c nginx-container
-
-kubectl delete -f apphub/kubernetes/tdsh-old.yaml
-kubectl delete deployments -l app=slicer
-kubectl apply -f apphub/kubernetes/tdsh-old.yaml
-kubectl logs -f proxy-shub -c nginx-container
-
-    """
     def __init__(self):
         self._port = 8080  # App Hub backend internal port
         self._app_label = "t4"  # TODO It should be a parameter
@@ -446,10 +390,10 @@ kubectl logs -f proxy-shub -c nginx-container
             f.write(_)
             f.close()
             if operation == "apply":
-                desc = "Create Slicer, apply Deployment manifest"
+                desc = "Create app-through-VNC-in-browser, apply Deployment manifest"
                 cmd = ["apply", "-f", f.name]
             elif operation == "delete":
-                desc = "Delete Slicer, delete Deployment manifest"
+                desc = "Delete app-through-VNC-in-browser, delete Deployment manifest"
                 cmd = ["delete", "-f", f.name]
             res = Kubernetes._exec_kubectl(desc, cmd)
             os.remove(f.name)
@@ -463,7 +407,7 @@ kubectl logs -f proxy-shub -c nginx-container
         :return:
         """
         cmd = ["get", "deployments", "-l", f"app={self._app_label}"]
-        res = Kubernetes._exec_kubectl("Get Slicer containers", cmd, "wide")
+        res = Kubernetes._exec_kubectl("Get app-through-VNC-in-browser containers", cmd, "wide")
         _ = []
         if res is not None:
             for i in res:

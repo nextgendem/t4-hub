@@ -114,7 +114,7 @@ def test_delete_container_and_session(client):
     logger.info(f"waiting for {waiting} s")
     tic = time.perf_counter()
     time.sleep(waiting)
-    # any 3DslicerSession?
+    # any Session?
     session = orm_session_maker()
     s = session.query(AppSession).filter(AppSession.user == data["username"]).first()
     assert s is None
