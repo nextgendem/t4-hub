@@ -140,7 +140,7 @@ fi
 # Step 7: Clean up old deployment (if exists)
 echo ""
 echo -e "${YELLOW}[7/8]${NC} Cleaning up old deployment..."
-kubectl delete -f apphub/kubernetes/k3s-local.yaml --ignore-not-found=true
+kubectl delete -k apphub/kubernetes/overlays/k3s-local --ignore-not-found=true
 echo "Waiting for resources to be deleted..."
 sleep 5
 echo -e "${GREEN}✓ Old deployment cleaned up${NC}"
@@ -148,7 +148,7 @@ echo -e "${GREEN}✓ Old deployment cleaned up${NC}"
 # Step 8: Apply new deployment
 echo ""
 echo -e "${YELLOW}[8/8]${NC} Deploying t4-hub to k3s..."
-if kubectl apply -f apphub/kubernetes/k3s-local.yaml; then
+if kubectl apply -k apphub/kubernetes/overlays/k3s-local; then
     echo -e "${GREEN}✓ Deployment manifest applied${NC}"
 else
     echo -e "${RED}Error: Failed to apply deployment manifest${NC}"
@@ -186,5 +186,5 @@ echo "  kubectl exec -ti proxy-app-hub -c app-hub -- bash  # Shell into app-hub"
 echo "  kubectl port-forward pod/proxy-app-hub 8001:80     # Alternative access via port-forward"
 echo ""
 echo "To delete deployment:"
-echo "  kubectl delete -f apphub/kubernetes/k3s-local.yaml"
+echo "  kubectl delete -k apphub/kubernetes/overlays/k3s-local"
 echo ""

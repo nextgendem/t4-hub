@@ -157,25 +157,20 @@ else
     exit 1
 fi
 
-# Step 9: Update manifest with image references
+# Step 9: Render kustomize overlay with updated image reference
 echo ""
-echo -e "${YELLOW}[9/10]${NC} Updating deployment manifest..."
-
-# Create temporary manifest with updated image references
-cp apphub/kubernetes/eks.yaml apphub/kubernetes/eks-deploy.yaml
-sed -i "s|474930672109.dkr.ecr.eu-west-1.amazonaws.com/t4hub/app-hub:latest|${APP_HUB_IMAGE}:${IMAGE_TAG}|g" apphub/kubernetes/eks-deploy.yaml
-
-echo -e "${GREEN}✓ Manifest updated with image references${NC}"
+echo -e "${YELLOW}[9/10]${NC} Rendering kustomize overlay with image ${APP_HUB_IMAGE}:${IMAGE_TAG}..."
+kubectl kustomize apphub/kubernetes/overlays/eks | \
+    sed "s|474930672109.dkr.ecr.eu-west-1.amazonaws.com/t4hub/app-hub:latest|${APP_HUB_IMAGE}:${IMAGE_TAG}|g" \
+    > /tmp/t4hub-eks-deploy.yaml
+echo -e "${GREEN}✓ Rendered manifest written to /tmp/t4hub-eks-deploy.yaml${NC}"
 
 # Step 10: Apply deployment
 echo ""
 echo -e "${YELLOW}[10/10]${NC} Deploying t4-hub to EKS..."
 
-# Create namespace if it doesn't exist
-kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-
-# Apply manifest
-if kubectl apply -f apphub/kubernetes/eks-deploy.yaml; then
+# Apply rendered manifest (namespace is included in the kustomize output)
+if kubectl apply -f /tmp/t4hub-eks-deploy.yaml; then
     echo -e "${GREEN}✓ Deployment manifest applied${NC}"
 else
     echo -e "${RED}Error: Failed to apply deployment manifest${NC}"

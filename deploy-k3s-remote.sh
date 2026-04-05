@@ -74,14 +74,14 @@ echo "  1. Build images on each node, OR"
 echo "  2. Use a container registry (Docker Hub, private registry, etc.)"
 echo ""
 echo "This script assumes images are built and available on all nodes."
-echo "If using a registry, make sure to update the image references in k3s-remote.yaml"
+echo "If using a registry, make sure to update the image references in overlays/k3s-remote/patch-apphub-pod.yaml"
 echo ""
 read -p "Press Enter to continue or Ctrl+C to cancel..."
 
 # Step 6: Clean up old deployment (if exists)
 echo ""
 echo -e "${YELLOW}[6/7]${NC} Cleaning up old deployment..."
-kubectl delete -f apphub/kubernetes/k3s-remote.yaml -n ${NAMESPACE} --ignore-not-found=true
+kubectl delete -k apphub/kubernetes/overlays/k3s-remote --ignore-not-found=true
 echo "Waiting for resources to be deleted..."
 sleep 5
 echo -e "${GREEN}✓ Old deployment cleaned up${NC}"
@@ -89,7 +89,7 @@ echo -e "${GREEN}✓ Old deployment cleaned up${NC}"
 # Step 7: Apply new deployment
 echo ""
 echo -e "${YELLOW}[7/7]${NC} Deploying t4-hub to k3s..."
-if kubectl apply -f apphub/kubernetes/k3s-remote.yaml; then
+if kubectl apply -k apphub/kubernetes/overlays/k3s-remote; then
     echo -e "${GREEN}✓ Deployment manifest applied${NC}"
 else
     echo -e "${RED}Error: Failed to apply deployment manifest${NC}"
