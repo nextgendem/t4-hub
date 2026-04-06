@@ -16,3 +16,6 @@ psycopg2-binary~=2.9.9
 pytest>=9.0.2
 pandas
 jose>=1.0.0
+
+oauthenticator~=16.0.3
+oauthenticator[googlegroups]

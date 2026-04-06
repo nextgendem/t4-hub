@@ -90,7 +90,6 @@ base_vnc_image_url = os.getenv("VNC_BASE_IMAGE_DOCKERFILE", "https://github.com/
 # END CONFIGURATION
 
 domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT', default=None))
-url_base = f"{proto}://{domain}"
 engine = create_local_orm(db_conn_str)
 create_tables(engine)
 orm_session_maker = create_session_factory(engine)
@@ -1360,6 +1359,7 @@ class BackgroundRunner:
         self.session_maker = None
 
     async def sessions_checker(self, sm):
+        global domain, app_hub_address
         async def check_session_activity(s):
             print(":::::::::::::::::::::::Checking Session Activity:::::::::::::::::::::::::::::::::::")
             pct = container_orchestrator.get_container_activity(s.container_name)
@@ -1425,10 +1425,24 @@ class BackgroundRunner:
 
         # After initialization, infinite loop
         while True:
+            # Refresh domain if autodetection is enabled (e.g. WiFi change)
+            force_refresh_nginx = False
+            if not os.getenv('DOMAIN') or os.getenv('DOMAIN') == "localhost":
+                new_domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT', default=None))
+                if new_domain != domain:
+                    logger.info(f"IP change detected! Updating domain from {domain} to {new_domain}")
+                    domain = new_domain
+                    if os.getenv("MODE") == "local":
+                        app_hub_address = domain
+                    force_refresh_nginx = True
+
             with db_access_lock:
                 print(f"Checking for inactive containers (to remove them). "
                       f"Inactivity time (secs): {allowed_inactivity_time_in_seconds}")
                 sess = sm()
+                if force_refresh_nginx:
+                    await refresh_nginx(container_orchestrator, sess, nginx_config_path, domain, app_hub_address)
+
                 # Loop all sessions, remove those that are not in use
                 for s in sess.query(AppSession).all():
                     print(f"Session - Name: {s.container_name};\n UUID: {s.uuid};\n User: {s.user}\n")

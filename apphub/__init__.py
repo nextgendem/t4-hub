@@ -99,16 +99,53 @@ def create_tables(engine_, declarative_base_=SQLAlchemyBase):
 
 def get_domain_name(mode, domain_name, port=None):
     from dotenv import load_dotenv
-    if mode == "local":
-        return domain_name + f":{port if port is not None else 8000}"
+    import socket
+
+    # Try to detect the host IP if domain is not configured or set to localhost
+    if not domain_name or domain_name == "localhost":
+        detected_ip = None
+
+        # 1. Try HOST_IP environment variable (Downward API - fastest and preferred)
+        detected_ip = os.getenv("HOST_IP")
+
+        # 2. Try kubectl if POD_NAME is set (accurate for dynamic IP if Downward API is missing)
+        if not detected_ip:
+            pod_name = os.getenv("POD_NAME")
+            if pod_name:
+                try:
+                    # The pod has RBAC for this (internal-kubectl service account)
+                    with os.popen(f"kubectl get pod {pod_name} -o jsonpath='{{.status.hostIP}}'") as f:
+                        detected_ip = f.read().strip()
+                except Exception:
+                    pass
+
+        # 3. Fallback to socket detection
+        if not detected_ip:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                detected_ip = s.getsockname()[0]
+                s.close()
+            except Exception:
+                pass
+
+        if detected_ip and not detected_ip.startswith("127."):
+            domain_name = detected_ip
+
+    if mode == "local" or mode == "container":
+        return (domain_name or "localhost") + f":{port if port is not None else 8000}"
     else:
-        externalIP  = os.popen('curl -s ifconfig.me').readline()
-        print(externalIP)
-        load_dotenv()
-        if externalIP == os.getenv("IP"):
-            return os.getenv("DOMAIN")
-        else:
-            return "localhost"
+        # Check for external IP (production mode)
+        try:
+            with os.popen('curl -s ifconfig.me') as f:
+                externalIP = f.read().strip()
+            load_dotenv()
+            if externalIP and externalIP == os.getenv("IP"):
+                return os.getenv("DOMAIN") or domain_name or "localhost"
+        except Exception:
+            pass
+
+        return domain_name or "localhost"
 
 
 

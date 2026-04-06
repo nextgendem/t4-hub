@@ -23,6 +23,10 @@ spec:
         value: "/app/app_hub_local.env"
       - name: POD_NAME
         value: "proxy-app-hub"
+      - name: HOST_IP
+        valueFrom:
+          fieldRef:
+            fieldPath: status.hostIP
       volumeMounts:
         - mountPath: /app/proxy
           name: nginx-conf
