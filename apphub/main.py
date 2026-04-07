@@ -44,12 +44,6 @@ import requests
 
 from requests.exceptions import RequestException
 
-from jose import jwt
-
-
-
-
-
 # INITIALIZE
 
 app = FastAPI(root_path="")
@@ -253,7 +247,8 @@ async def index_page(id : str = "0"):
 @app.get("/")
 async def welcome_and_login_page(request: Request):
     # Jinja2 template with login page
-    _ = dict(request=request)
+    is_ngd_auth = NEXTGENDEM_BASE_URL is not None
+    _ = dict(request=request, is_ngd_auth=is_ngd_auth)
     return templates.TemplateResponse("login.html", _)
 
 
@@ -267,7 +262,8 @@ async def can_open_session(user):
 # Replace these with your own values from the Google Developer Console
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI')
+GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_OAUTH_CALLBACK_URL') or os.getenv('GOOGLE_REDIRECT_URI')
+NEXTGENDEM_BASE_URL = os.getenv('NEXTGENDEM_BASE_URL')
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Authentication with Google, redirects to /oauth2/callback
@@ -285,13 +281,10 @@ async def login_google():
     )
     return RedirectResponse(url=google_auth_url)
 
-# get users from internal server
-# important to get roles of main platform (such as transformer4-guest, sys-admin,...)
-# main parameter: email
-
+# get user roles from main platform (such as transformer4, sys-admin,...)
 def get_user_roles(email, protocol_server=None):
     if not protocol_server:
-        protocol_server = os.environ.get("NGD_PROTOCOL_SERVER", "https://sys.nextgendem.eu")
+        protocol_server = NEXTGENDEM_BASE_URL or os.environ.get("NEXTGENDEM_BASE_URL", "https://sys.nextgendem.eu")
     try:
         response = requests.get(
             f"{protocol_server}/api/user_roles",
@@ -314,7 +307,7 @@ def get_user_roles(email, protocol_server=None):
 # Redirects to other function with the HTML responses
         
 @app.get("/oauth2/callback")
-async def auth_google(code: str,request: Request):
+async def auth_google(code: str, request: Request):
     token_url = "https://accounts.google.com/o/oauth2/token"
     data = {
         "code": code,
@@ -324,12 +317,16 @@ async def auth_google(code: str,request: Request):
         "grant_type": "authorization_code",
     }
     response = requests.post(token_url, data=data)
+    if response.status_code != 200:
+        return HTMLResponse(content="Login Failed: Google Token Exchange Error", status_code=401)
+    
     access_token = response.json().get("access_token")
     request_info = requests.get("https://www.googleapis.com/oauth2/v1/userinfo", headers={"Authorization": f"Bearer {access_token}"})
-    
+
     user_info = request_info.json()
     user_email = user_info["email"]
-    if not user_info["verified_email"]:
+
+    if not user_info.get("verified_email", True):
         return HTMLResponse(content="""<!DOCTYPE html>
                                     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
                                     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
@@ -373,14 +370,12 @@ async def auth_google(code: str,request: Request):
                                         </body>
                                       </html>""", status_code=401)
             
-    user_roles = get_user_roles(user_email)
-    is_authorized = "transformer4-admin" in user_roles or "sys-admin" in user_roles
+    user_roles = user_info.get("roles")
+    if user_roles is None:
+        user_roles = get_user_roles(user_email)
+        
+    is_authorized = "transformer4" in user_roles or "sys-admin" in user_roles
 
-    is_guest = "transformer4-guest" in user_roles
-    if is_guest:
-      _ = dict(request=request)
-      return RedirectResponse(url=f"/index.html", status_code=302)
-    
     if not is_authorized:
             return HTMLResponse(content="""<!DOCTYPE html>
                                         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">

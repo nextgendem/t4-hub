@@ -29,6 +29,15 @@
     </div>
     <div class="flex p-4 m-6 justify-center">
         <form id="loginForm" class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4" method="POST" action="/login" style="min-width: 400px;">
+		  {% if is_ngd_auth %}
+		  <!-- Google OAuth Login Only -->
+		  <div class="flex items-center justify-center">
+			<button type="button" class="flex items-center justify-center w-full py-2 px-4 border border-gray-300 rounded hover:bg-gray-100" onclick="submitToGoogle()">
+			  <img src="https://img.icons8.com/color/48/000000/google-logo.png" height="24" alt="Google Logo" width="24" class="mr-2">
+			  <span>Continue with Google</span>
+			</button>
+		  </div>
+		  {% else %}
 		  <!-- Username/Password Login -->
 		  <div class="mb-4">
 			<label class="block text-gray-700 text-sm font-bold mb-2" for="username">
@@ -62,6 +71,7 @@
 			  <span>Continue with Google</span>
 			</button>
 		  </div>
+		  {% endif %}
 		</form>
 	</div>
 	<script>
