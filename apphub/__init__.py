@@ -102,7 +102,7 @@ def get_domain_name(mode, domain_name, port=None):
     import socket
 
     # Try to detect the host IP if domain is not configured or set to localhost
-    if not domain_name or domain_name == "localhost" or domain_name == "detect":
+    if not domain_name or domain_name == "detect":
         # 1. Try HOST_IP environment variable (Downward API - fastest and preferred)
         detected_ip = os.getenv("HOST_IP")
         if detected_ip:

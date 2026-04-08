@@ -1430,7 +1430,7 @@ class BackgroundRunner:
         while True:
             # Refresh domain if autodetection is enabled (e.g. WiFi change)
             force_refresh_nginx = False
-            if not os.getenv('DOMAIN') or os.getenv('DOMAIN') == "localhost":
+            if not os.getenv('DOMAIN') or os.getenv('DOMAIN') == "detect":
                 new_domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT', default=None))
                 if new_domain != domain:
                     logger.info(f"IP change detected! Updating domain from {domain} to {new_domain}")
