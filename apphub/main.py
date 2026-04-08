@@ -271,6 +271,12 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_OAUTH_CALLBACK_URL') or os.getenv('GOOGLE_REDIRECT_URI')
 NEXTGENDEM_BASE_URL = os.getenv('NEXTGENDEM_BASE_URL', "https://sys.nextgendem.eu")
+
+logger.info("--- Google OAuth Configuration ---")
+logger.info(f"GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID}")
+logger.info(f"GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
+logger.info(f"NEXTGENDEM_BASE_URL: {NEXTGENDEM_BASE_URL}")
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Authentication with Google, redirects to /oauth2/callback
@@ -278,6 +284,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 @app.post("/login/google")
 async def login_google():
+    logger.info(f"Initiating Google OAuth login with redirect_uri: {GOOGLE_REDIRECT_URI}")
     google_auth_url = (
         f"https://accounts.google.com/o/oauth2/auth?"
         f"response_type=code&"
@@ -292,22 +299,29 @@ async def login_google():
 def get_user_roles(email, protocol_server=None):
     if not protocol_server:
         protocol_server = NEXTGENDEM_BASE_URL
+    url = f"{protocol_server}/api/user_roles"
+    logger.info(f"Fetching user roles for {email} from {url}")
     try:
         response = requests.get(
-            f"{protocol_server}/api/user_roles",
+            url,
             params={'email': email},
             headers={'Cache-Control': 'no-cache'},
             timeout=10
         )
+        logger.info(f"User roles response status: {response.status_code}")
+        if response.status_code != 200:
+            logger.error(f"Error fetching user roles. Response content: {response.text}")
         response.raise_for_status()
     except RequestException as e:
-        print(f"A network error occurred: {e}")
+        logger.error(f"A network error occurred while fetching roles: {e}")
         return []
     except requests.exceptions.HTTPError as e:
-        print(f"An HTTP error occurred: {e}")
+        logger.error(f"An HTTP error occurred while fetching roles: {e}")
         return []
     else:
-        return response.json()["roles"]
+        roles = response.json().get("roles", [])
+        logger.info(f"User roles for {email}: {roles}")
+        return roles
         
 # Main verification of user via Google Authentication
 # returns user_info[] (["email"],["username"],["verified_email"])
@@ -316,6 +330,7 @@ def get_user_roles(email, protocol_server=None):
         
 @app.get("/oauth2/callback")
 async def auth_google(code: str, request: Request):
+    logger.info(f"Received Google OAuth callback. Exchanging code for token with redirect_uri: {GOOGLE_REDIRECT_URI}")
     token_url = "https://accounts.google.com/o/oauth2/token"
     data = {
         "code": code,
@@ -326,13 +341,23 @@ async def auth_google(code: str, request: Request):
     }
     response = requests.post(token_url, data=data, timeout=10)
     if response.status_code != 200:
+        logger.error(f"Google Token Exchange Error. Status: {response.status_code}, Body: {response.text}")
         return HTMLResponse(content="Login Failed: Google Token Exchange Error", status_code=401)
     
+    logger.info("Google Token Exchange successful.")
     access_token = response.json().get("access_token")
-    request_info = requests.get("https://www.googleapis.com/oauth2/v1/userinfo", headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
+    user_info_url = "https://www.googleapis.com/oauth2/v1/userinfo"
+    logger.info(f"Requesting user info from {user_info_url}")
+    request_info = requests.get(user_info_url, headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
+    logger.info(f"User info response status: {request_info.status_code}")
+
+    if request_info.status_code != 200:
+        logger.error(f"Failed to get user info. Body: {request_info.text}")
+        return HTMLResponse(content="Login Failed: Could not retrieve user info", status_code=401)
 
     user_info = request_info.json()
     user_email = user_info["email"]
+    logger.info(f"User authenticated: {user_email}")
 
     if not user_info.get("verified_email", True):
         return HTMLResponse(content="""<!DOCTYPE html>
