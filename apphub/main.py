@@ -270,7 +270,7 @@ async def can_open_session(user):
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_OAUTH_CALLBACK_URL') or os.getenv('GOOGLE_REDIRECT_URI')
-NEXTGENDEM_BASE_URL = os.getenv('NEXTGENDEM_BASE_URL')
+NEXTGENDEM_BASE_URL = os.getenv('NEXTGENDEM_BASE_URL', "https://sys.nextgendem.eu")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Authentication with Google, redirects to /oauth2/callback
@@ -291,7 +291,7 @@ async def login_google():
 # get user roles from main platform (such as transformer4, sys-admin,...)
 def get_user_roles(email, protocol_server=None):
     if not protocol_server:
-        protocol_server = NEXTGENDEM_BASE_URL or os.environ.get("NEXTGENDEM_BASE_URL", "https://sys.nextgendem.eu")
+        protocol_server = NEXTGENDEM_BASE_URL
     try:
         response = requests.get(
             f"{protocol_server}/api/user_roles",
