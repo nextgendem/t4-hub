@@ -40,6 +40,7 @@
 		  {% else %}
 		  <!-- Username/Password Login -->
 		  <div class="mb-4">
+            <label class="block text-gray-700 text-sm font-bold mb-2" >kubectl delete node rnebot-nice-pt && sudo systemctl restart k3s</label>
 			<label class="block text-gray-700 text-sm font-bold mb-2" for="username">
 			  Username
 			</label>
@@ -52,7 +53,7 @@
 			<input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline" id="password" name="password" type="password" placeholder="Enter password">
 		  </div>
 		  <div class="mb-4">
-			<button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" onclick="submitToLogin()">
+			<button type="button" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" onclick="submitToLogin()">
 			  Login
 			</button>
 		  </div>

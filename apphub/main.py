@@ -65,9 +65,10 @@ app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__
 db_conn_str = os.getenv("DB_CONNECTION_STRING")
 ACTIVITY_THRESHOLD = 10  # Percentage of CPU usage to consider a container active
 nginx_container_name = os.getenv('NGINX_NAME')  # Read from environment variable the name of the nginx container relative to this container
-nginx_config_path = os.getenv('NGINX_CONFIG_FILE')  # Read from environment the location of nginx.conf for this container
-index_path = os.getenv('INDEX_PATH')  # Path for the automatic index.html file
-allowed_inactivity_time_in_seconds = int(os.getenv("INACTIVITY_TIME_SEC"))
+script_dir = "/app"
+nginx_config_path = f"{script_dir}/proxy/nginx.conf"  # os.getenv('NGINX_CONFIG_FILE')  # Read from environment the location of nginx.conf for this container
+index_path = f"{script_dir}/apphub/templates/index.html"  #os.getenv('INDEX_PATH')  # Path for the automatic index.html file
+allowed_inactivity_time_in_seconds = int(os.getenv("INACTIVITY_TIME_SEC", 5184000))
 network_name = os.getenv('NETWORK_NAME')
 proto = os.getenv('PROTO')
 
@@ -77,6 +78,7 @@ nfs_server = os.getenv('NFS_SERVER')  # Not used. Teide provides NFS mounts dire
 co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")
 app_image_name = "transformer4"
 app_image_tag = "latest"
+# Path to the source to build the app image
 app_image_url = os.getenv("APP_IMAGE_DOCKERFILE", "https://github.com/nextgendem/t4-novnc#:src")
 base_vnc_image_name = "vnc-base"
 base_vnc_image_tag = "latest"
@@ -137,7 +139,7 @@ http {{
                     '"$http_user_agent" "$uri" "$http_x_forwarded_for" "$request_filename"';
   server {{
     listen     80;
-    server_name  {domainn};
+    server_name  {domainn.split(':')[0]};
     access_log /var/log/nginx/access2.log custom;
     error_log  /var/log/nginx/error2.log  debug;
 
@@ -219,7 +221,12 @@ http {{
     await command_nginx_to_read_configuration(nginx_container_name)
 
 
-asyncio.run(refresh_nginx(container_orchestrator, None, nginx_config_path, domain, app_hub_address))
+@app.on_event("startup")
+async def startup_event():
+    print("STARTUP: refreshing Nginx on startup...", flush=True)
+    await refresh_nginx(container_orchestrator, None, nginx_config_path, domain, app_hub_address)
+
+# asyncio.run(refresh_nginx(container_orchestrator, None, nginx_config_path, domain, app_hub_address))
 max_sessions = int(os.getenv("MAX_SESSIONS", default=1000))  # >= 1000 -> ignore
 
 
@@ -289,7 +296,8 @@ def get_user_roles(email, protocol_server=None):
         response = requests.get(
             f"{protocol_server}/api/user_roles",
             params={'email': email},
-            headers={'Cache-Control': 'no-cache'}
+            headers={'Cache-Control': 'no-cache'},
+            timeout=10
         )
         response.raise_for_status()
     except RequestException as e:
@@ -316,12 +324,12 @@ async def auth_google(code: str, request: Request):
         "redirect_uri": GOOGLE_REDIRECT_URI,
         "grant_type": "authorization_code",
     }
-    response = requests.post(token_url, data=data)
+    response = requests.post(token_url, data=data, timeout=10)
     if response.status_code != 200:
         return HTMLResponse(content="Login Failed: Google Token Exchange Error", status_code=401)
     
     access_token = response.json().get("access_token")
-    request_info = requests.get("https://www.googleapis.com/oauth2/v1/userinfo", headers={"Authorization": f"Bearer {access_token}"})
+    request_info = requests.get("https://www.googleapis.com/oauth2/v1/userinfo", headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
 
     user_info = request_info.json()
     user_email = user_info["email"]

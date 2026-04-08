@@ -472,7 +472,12 @@ class Kubernetes(IContainerOrchestrator):
 
     def get_container_status(self, container_name):
         # First try to get the pod directly by name (for infrastructure pods like proxy-app-hub)
-        cmd = ["get", "pod", container_name]
+        # If running inside a k8s pod, use POD_NAME env var if the requested container_name matches NGINX_NAME
+        nginx_name = os.getenv("NGINX_NAME", "proxy-app-hub")
+        pod_name = os.getenv("POD_NAME") if (container_name == nginx_name and os.getenv("POD_NAME")) else container_name
+        
+        print(f"DEBUG_PRINT: get_container_status for {container_name}, using pod_name {pod_name}")
+        cmd = ["get", "pod", pod_name]
         res = Kubernetes._exec_kubectl("Get POD status by name", cmd, "wide")
         if res is not None:
             _ = res[0]["STATUS"]

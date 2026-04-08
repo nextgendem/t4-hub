@@ -45,6 +45,11 @@ spec:
           env:
           - name: ENV_FILE
             value: "/app/app_hub_local.env"
+          - name: GOOGLE_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: apphub-secrets
+                key: GOOGLE_CLIENT_SECRET
           volumeMounts:
             - mountPath: /app/proxy
               name: nginx-conf

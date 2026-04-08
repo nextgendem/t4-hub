@@ -17,6 +17,11 @@ spec:
       env:
       - name: ENV_FILE
         value: "/app/app_hub_k3s_remote.env"
+      - name: GOOGLE_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: apphub-secrets
+            key: GOOGLE_CLIENT_SECRET
       - name: K8S_NAMESPACE
         value: "t4hub"
       - name: STORAGE_BASE_PATH

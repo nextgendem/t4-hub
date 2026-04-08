@@ -17,3 +17,4 @@ apphub/logs
 *.log
 .env
 *.ipynb
+apphub/kubernetes/base/secrets.yaml

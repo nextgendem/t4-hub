@@ -102,11 +102,11 @@ def get_domain_name(mode, domain_name, port=None):
     import socket
 
     # Try to detect the host IP if domain is not configured or set to localhost
-    if not domain_name or domain_name == "localhost":
-        detected_ip = None
-
+    if not domain_name or domain_name == "localhost" or domain_name == "detect":
         # 1. Try HOST_IP environment variable (Downward API - fastest and preferred)
         detected_ip = os.getenv("HOST_IP")
+        if detected_ip:
+            print(f"DEBUG: Detected IP from HOST_IP: {detected_ip}")
 
         # 2. Try kubectl if POD_NAME is set (accurate for dynamic IP if Downward API is missing)
         if not detected_ip:
@@ -116,6 +116,8 @@ def get_domain_name(mode, domain_name, port=None):
                     # The pod has RBAC for this (internal-kubectl service account)
                     with os.popen(f"kubectl get pod {pod_name} -o jsonpath='{{.status.hostIP}}'") as f:
                         detected_ip = f.read().strip()
+                        if detected_ip:
+                            print(f"DEBUG: Detected IP from kubectl: {detected_ip}")
                 except Exception:
                     pass
 
@@ -126,6 +128,8 @@ def get_domain_name(mode, domain_name, port=None):
                 s.connect(("8.8.8.8", 80))
                 detected_ip = s.getsockname()[0]
                 s.close()
+                if detected_ip:
+                    print(f"DEBUG: Detected IP from socket: {detected_ip}")
             except Exception:
                 pass
 
@@ -141,7 +145,7 @@ def get_domain_name(mode, domain_name, port=None):
                 externalIP = f.read().strip()
             load_dotenv()
             if externalIP and externalIP == os.getenv("IP"):
-                return os.getenv("DOMAIN") or domain_name or "localhost"
+                return os.getenv("DOMAIN", "detect") or domain_name or "localhost"
         except Exception:
             pass
 
