@@ -561,7 +561,7 @@ class Kubernetes(IContainerOrchestrator):
         NGINX and OpenLDAP; but may be others in the future
         :return:
         """
-        cmd = ["apply", "-f", "tdsh-old.yaml"]
+        cmd = ["version"]  # No action
         return Kubernetes._exec_kubectl("Start base containers", cmd)
 
 

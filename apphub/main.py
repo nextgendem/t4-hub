@@ -272,10 +272,11 @@ GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_OAUTH_CALLBACK_URL') or os.getenv('GOOGLE_REDIRECT_URI')
 NEXTGENDEM_BASE_URL = os.getenv('NEXTGENDEM_BASE_URL', "https://sys.nextgendem.eu")
 
-logger.info("--- Google OAuth Configuration ---")
-logger.info(f"GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID}")
-logger.info(f"GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
-logger.info(f"NEXTGENDEM_BASE_URL: {NEXTGENDEM_BASE_URL}")
+# logger.info("--- Google OAuth Configuration ---")
+# logger.info(f"GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID}")
+# logger.info(f"GOOGLE_CLIENT_SECRET: {GOOGLE_CLIENT_SECRET}")
+# logger.info(f"GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
+# logger.info(f"NEXTGENDEM_BASE_URL: {NEXTGENDEM_BASE_URL}")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -293,6 +294,12 @@ async def login_google():
         f"scope=openid%20profile%20email&"
         f"access_type=offline"
     )
+    # logger.info("--- Google OAuth Configuration ---")
+    # logger.info(f"GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID}")
+    # logger.info(f"GOOGLE_CLIENT_SECRET: {GOOGLE_CLIENT_SECRET}")
+    # logger.info(f"GOOGLE_REDIRECT_URI: {GOOGLE_REDIRECT_URI}")
+    # logger.info(f"NEXTGENDEM_BASE_URL: {NEXTGENDEM_BASE_URL}")
+
     return RedirectResponse(url=google_auth_url)
 
 # get user roles from main platform (such as transformer4, sys-admin,...)
