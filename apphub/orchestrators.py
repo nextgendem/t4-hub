@@ -444,6 +444,42 @@ class Kubernetes(IContainerOrchestrator):
         cmd = ["delete", "pv", "--all", volume_name]
         res = Kubernetes._exec_kubectl("Remove vol (delete Vol)", cmd)
 
+    @staticmethod
+    def _pods_by_label(desc, label_selector):
+        """
+        Pod rows for a label selector, oldest first, so [-1] is the newest.
+
+        A session Deployment can legitimately have more than one pod at a time: an eviction, an
+        OOM-kill, or a rolling replacement all leave a dead pod alongside the live one. Sorting by
+        creation time makes "the current pod" addressable instead of whatever kubectl happened to
+        print first.
+        """
+        cmd = ["get", "pod", "-l", label_selector, "--sort-by=.metadata.creationTimestamp"]
+        return Kubernetes._exec_kubectl(desc, cmd, "wide") or []
+
+    @staticmethod
+    def _select_live_pod(rows):
+        """
+        The newest pod that is actually serving, or None.
+
+        Taking rows[0] blindly is what made the hub hang: after a node evicted a session pod for
+        ephemeral-storage, `kubectl get pod -l app-user=...` listed the dead pod first, so the hub
+        read Status=Error forever while a healthy pod sat right behind it.
+        """
+        running = [r for r in rows if str(r.get("STATUS", "")).strip() == "Running"]
+        if not running:
+            return None
+
+        def _is_ready(row):
+            value = str(row.get("READY", "")).strip()   # "1/1"
+            if "/" in value:
+                ready, total = value.split("/", 1)
+                return ready == total
+            return False
+
+        ready = [r for r in running if _is_ready(r)]
+        return (ready or running)[-1]
+
     def get_container_activity(self, container_name):
         # Check if the deployment exists
         cmd = ["get", "deployment", f"deploy-{container_name}"]
@@ -457,26 +493,29 @@ class Kubernetes(IContainerOrchestrator):
         if res is None or len(res) == 0:
             return -1
         else:
-            logger.debug(f"-- Activity--: {res[0]}")
-            _ = res[0]["CPU(cores)"]
-            print(f"CPU: {_}")
-            _ = (float(_[:-1]) / 1000) * 100
+            # `kubectl top` cannot be sorted by creation time, and a leftover pod would drag the
+            # reading down and get an active session culled. The busiest pod is the live one.
+            cpus = []
+            for row in res:
+                try:
+                    cpus.append(float(str(row["CPU(cores)"]).strip().rstrip("m")))
+                except (KeyError, ValueError):
+                    continue
+            if not cpus:
+                return -1
+            logger.debug(f"-- Activity--: {res} -> max {max(cpus)}m")
+            _ = (max(cpus) / 1000) * 100
             print(f"CPU %: {_}")
             return _
 
     def get_container_ip(self, name_id, network_id):
-        cmd = ["get", "pod", "-l", f"app-user={name_id}"]  # IP
-        res = Kubernetes._exec_kubectl("Get POD IP", cmd, "wide")
-        if res is None:
+        rows = Kubernetes._pods_by_label("Get POD IP", f"app-user={name_id}")
+        pod = Kubernetes._select_live_pod(rows)
+        if pod is None:
+            logger.debug(f"No Running pod for app-user={name_id} among {len(rows)} row(s)")
             return None
-        _ = res[0]
-        if _["STATUS"] == "Running":
-            _ = _["IP"]
-        else:
-            logger.debug(f"Status: {_['STATUS']} not RUNNING")
-            _ = None
-        logger.debug(f"IP: {_}")
-        return _
+        logger.debug(f"IP: {pod['IP']}")
+        return pod["IP"]
 
     def get_container_port(self, name_id):
         # Always the same port
@@ -497,11 +536,17 @@ class Kubernetes(IContainerOrchestrator):
             return _
 
         # Fall back to label-based search (for user session pods)
-        cmd = ["get", "pod", "-l", f"app-user={container_name}"]
-        res = Kubernetes._exec_kubectl("Get POD status by label", cmd, "wide")
-        if res is None:
+        rows = Kubernetes._pods_by_label("Get POD status by label", f"app-user={container_name}")
+        if not rows:
             return "DoesNotExist"
-        _ = res[0]["STATUS"]
+        pod = Kubernetes._select_live_pod(rows)
+        if pod is None:
+            # Nothing Running: report the newest pod's own status rather than the oldest corpse's,
+            # so a session that is still starting reads "Pending"/"ContainerCreating" and not
+            # "Error" left over from a pod the node evicted.
+            _ = str(rows[-1]["STATUS"]).strip()
+        else:
+            _ = str(pod["STATUS"]).strip()
         print(f"Status (by label): {_}")
         return _
 
