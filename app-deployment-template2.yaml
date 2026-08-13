@@ -20,7 +20,7 @@ spec:
       containers:
       - name: {{container_name}}
         image: {{image_name}}
-        imagePullPolicy: Never
+        imagePullPolicy: {{image_pull_policy}}
         lifecycle:
           postStart:
             exec:

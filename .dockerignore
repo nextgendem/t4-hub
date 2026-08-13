@@ -24,3 +24,8 @@
 **/values.dev.yaml
 apphub/logfile.log
 README.md
+# Deployment manifests have no business inside the image, and apphub/kubernetes/base/secrets.yaml
+# holds a real GOOGLE_CLIENT_SECRET. It is gitignored, but "COPY apphub /app/apphub" would still
+# bake it into a layer.
+apphub/kubernetes
+**/secrets.yaml

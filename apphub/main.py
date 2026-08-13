@@ -76,8 +76,10 @@ proto = os.getenv('PROTO')
 nfs_server = os.getenv('NFS_SERVER')  # Not used. Teide provides NFS mounts directly to all nodes
 
 co_str = os.getenv("CONTAINER_ORCHESTRATOR", default="kubernetes")
-app_image_name = "transformer4"
-app_image_tag = "latest"
+# Image used for user sessions. Outside a hand-prepared node the image has to come from a registry,
+# so both parts are configurable (the names were already declared in the .env files, unused).
+app_image_name = os.getenv("APP_IMAGE_NAME", "transformer4")
+app_image_tag = os.getenv("APP_IMAGE_TAG", "latest")
 # Path to the source to build the app image
 app_image_url = os.getenv("APP_IMAGE_DOCKERFILE", "https://github.com/nextgendem/t4-novnc#:src")
 base_vnc_image_name = "vnc-base"
@@ -89,7 +91,13 @@ domain = get_domain_name(os.getenv("MODE"), os.getenv('DOMAIN'), os.getenv('PORT
 engine = create_local_orm(db_conn_str)
 create_tables(engine)
 orm_session_maker = create_session_factory(engine)
-db_access_lock = nullcontext() if "postgresql" in db_conn_str else lock
+# NOTE: this used to be a multiprocessing.Lock for non-PostgreSQL backends. It deadlocks: the
+# session checker holds it across `await refresh_nginx(...)` / `await check_session_activity(...)`,
+# and every request handler that takes it is `async def` on the same event loop -- so a request
+# arriving mid-cull blocks the loop while the holder is suspended, and neither ever resumes.
+# The lock only ever bought cross-process exclusion for SQLite, which is moot now that supervisord
+# runs gunicorn with a single worker. Keep SQLite and `--workers 1` together.
+db_access_lock = nullcontext()
 
 if co_str == "docker_compose":
     network_id = create_docker_network(network_name)
@@ -260,7 +268,11 @@ async def welcome_and_login_page(request: Request):
 
 
 async def check_credentials(user, password):
-    return True
+    # The legacy form login (POST /login) performs NO credential verification whatsoever -- it used
+    # to return True for anybody. The UI hides the form whenever NEXTGENDEM auth is configured, but
+    # the route stays registered, so on a public deployment it was an unauthenticated way to open a
+    # session. Fail closed: only an explicit opt-in re-enables it, for local development.
+    return os.getenv("ALLOW_FORM_LOGIN", "false").strip().lower() in ("1", "true", "yes")
 
 
 async def can_open_session(user):
@@ -329,7 +341,52 @@ def get_user_roles(email, protocol_server=None):
         roles = response.json().get("roles", [])
         logger.info(f"User roles for {email}: {roles}")
         return roles
-        
+
+
+def _denied(title, message, status_code):
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+                                        <html>
+                                          <head>
+                                            <title>{title}</title>
+                                          </head>
+                                          <body>
+                                          <p>{message}</p>
+                                          </body>
+                                        </html>""", status_code=status_code)
+
+
+def authorize_session_request(request, session_id, require_sys_admin=False):
+    """
+    Guard for the endpoints that mutate a session (close/share/unshare/delete).
+
+    The "source" cookie, set when the session was created, is the only credential this app has; the
+    page routes already gate on it. These endpoints did not, so knowing a session UUID was enough to
+    close, share or delete somebody else's session with a bare POST -- hiding the buttons from
+    non-admins protected nothing.
+
+    Returns None when the caller may proceed, otherwise the HTMLResponse to return instead.
+    """
+    if request.cookies.get("source", "unknown") != session_id:
+        logger.warning(f"Rejected session request for {session_id}: 'source' cookie does not match")
+        return _denied("Login Failed", "Access not authorized", 401)
+
+    if require_sys_admin:
+        session = orm_session_maker()
+        try:
+            s = session.query(AppSession).get(session_id)
+            email = s.email if s else None
+        finally:
+            session.close()
+        if not email:
+            return _denied("Login Failed", "Access not authorized", 401)
+        # get_user_roles fails closed: any network/HTTP error yields [], hence a denial.
+        if "sys-admin" not in get_user_roles(email):
+            logger.warning(f"Rejected privileged request from {email}: not sys-admin")
+            return _denied("Not Allowed", "Access not authorized", 403)
+
+    return None
+
+
 # Main verification of user via Google Authentication
 # returns user_info[] (["email"],["username"],["verified_email"])
 # Also creates the session (ID: Google User ID) if it's autenthicated
@@ -704,122 +761,55 @@ async def login(login_form: OAuth2PasswordRequestForm = Depends()):
 
 @app.post("/sessions/{session_id}")
 async def get_session_management_page(request: Request, session_id: str, page):
-    source = request.cookies.get("source", "unknown")
-    if source != session_id:
-        return HTMLResponse(content="""<!DOCTYPE html>
-                                        <html>
-                                          <head>
-                                            <title>Login Failed</title>
-                                          </head>
-                                          <body>
-                                          <p>Access not authorized</p>
-                                          </body>
-                                        </html>""", status_code=401)
-                                        
-    session = orm_session_maker()
-    s = session.query(AppSession).get(session_id)
-    lst = []
-    if s is None:
-        _ = dict(request=request,
-                 url_base="",
-                 sessions_list=lst,
-                 sess_uuid=session_id,
-                 sess_link=f"",
-                 files_link=f"",
-                 sess_email="Not email found",
-                 sess_user="Session ID not found",
-                 sess_shared="Session ID not found")
-    else:
-        user_rol = get_user_roles(s.email)
-        # check if it's admin or not
-        is_admin = "sys-admin" in user_rol
-        if is_admin:
-            for _ in session.query(AppSession).all():
-                d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
-                lst.append(d)
+    denied = authorize_session_request(request, session_id)
+    if denied:
+        return denied
 
-        _ = dict(request=request,
-                 url_base="",
-                 sessions_list=lst,
-                 sess_uuid=session_id,
-                 sess_link=s.url_path,
-                 files_link=f"/{s.uuid}-files/",
-                 sess_user=s.user,
-                 sess_email=s.email,
-                 sess_shared=s.info['shared'])
-
+    # The page is produced entirely by refresh_manage_session_html. The context dict and the
+    # role-gated `lst` that used to be built here fed templates/manage_session.html, whose
+    # TemplateResponse has been commented out for a long time -- and building `lst` cost a second
+    # get_user_roles() round-trip to the platform on every single page load.
     with db_access_lock:
         session = orm_session_maker()
-        r = HTMLResponse(content=refresh_manage_session_html(lst,session_id, session,page, proto=proto, admin=False, write_to_file=False),
-                            status_code=200)
-        print("Respuesta:" + str(r))
-        session.close()
-        return r
+        try:
+            return HTMLResponse(
+                content=refresh_manage_session_html(session_id, session, page, proto=proto,
+                                                    admin=False, write_to_file=False),
+                status_code=200)
+        finally:
+            session.close()
 
 # HTML Responses main hub
 # View of the user's session and other sessions
 
 @app.get("/sessions/{session_id}")
-async def get_session_management_page(request: Request, session_id: str, page):
-    
-    source = request.cookies.get("source", "unknown")
-    if source != session_id:
-        return HTMLResponse(content="""<!DOCTYPE html>
-                                        <html>
-                                          <head>
-                                            <title>Login Failed</title>
-                                          </head>
-                                          <body>
-                                          <p>Access not authorized</p>
-                                          </body>
-                                        </html>""", status_code=401)
-                                        
-    session = orm_session_maker()
-    s = session.query(AppSession).get(session_id)
-    lst = []
-    if s is None:
-        _ = dict(request=request,
-                 url_base="",
-                 sessions_list=lst,
-                 sess_uuid=session_id,
-                 sess_link=f"",
-                 files_link=f"",
-                 sess_email="Not email found",
-                 sess_user="Session ID not found",
-                 sess_shared="Session ID not found")
-    else:
-        user_rol = get_user_roles(s.email)
-        # check if it's admin or not
-        is_admin = "sys-admin" in user_rol
-        if is_admin:
-            for _ in session.query(AppSession).all():
-                d = {c.name: getattr(_, c.name) for c in _.__table__.columns}
-                lst.append(d)
-
-        _ = dict(request=request,
-                 url_base="",
-                 sessions_list=lst,
-                 sess_uuid=session_id,
-                 sess_link=s.url_path,
-                 files_link=f"/{s.uuid}-files/",
-                 sess_user=s.user,
-                 sess_email=s.email,
-                 sess_shared=s.info['shared'])
+async def get_session_management_page_get(request: Request, session_id: str, page):
+    # Same body as the POST twin above (which serves the "Refresh session" form submissions).
+    denied = authorize_session_request(request, session_id)
+    if denied:
+        return denied
 
     with db_access_lock:
         session = orm_session_maker()
-        r = HTMLResponse(content=refresh_manage_session_html(lst,session_id, session,page, proto=proto, admin=False, write_to_file=False),
-                            status_code=200)
-        print("Respuesta:" + str(r))
-        session.close()
-        return r
-    #return templates.TemplateResponse("manage_session.html", _)
+        try:
+            return HTMLResponse(
+                content=refresh_manage_session_html(session_id, session, page, proto=proto,
+                                                    admin=False, write_to_file=False),
+                status_code=200)
+        finally:
+            session.close()
 
 # NOT USED
 # Delete session from this database (only sys-admin)
 
 @app.post("/sessions/{admin_id}/{session_id}/delete")
-async def close_session_and_container(admin_id,session_id):
+async def admin_delete_session(request: Request, admin_id, session_id):
+    # `admin_id` is the caller's OWN session (that is what the Delete button posts), `session_id`
+    # the target. So the cookie is checked against admin_id, and that identity must be sys-admin --
+    # the same role the table of other people's sessions is gated on.
+    denied = authorize_session_request(request, admin_id, require_sys_admin=True)
+    if denied:
+        return denied
     with db_access_lock:
         session = orm_session_maker()
         s = session.query(AppSession).get(session_id)
@@ -848,6 +838,9 @@ async def close_session_and_container(admin_id,session_id):
 
 @app.post("/sessions/{session_id}/share")
 async def share_session(request: Request, session_id: str, interactive: int = 0):
+    denied = authorize_session_request(request, session_id)
+    if denied:
+        return denied
     with db_access_lock:
         session = orm_session_maker()
         s = session.query(AppSession).get(session_id)
@@ -876,6 +869,9 @@ async def share_session(request: Request, session_id: str, interactive: int = 0)
 
 @app.post("/sessions/{session_id}/unshare")
 async def unshare_session(request: Request, session_id: str):
+    denied = authorize_session_request(request, session_id)
+    if denied:
+        return denied
     with db_access_lock:
         session = orm_session_maker()
         s = session.query(AppSession).get(session_id)
@@ -901,7 +897,10 @@ async def unshare_session(request: Request, session_id: str):
 # Deletes user sessions (via same user, or super admin)
 
 @app.post("/sessions/{session_id}/close")
-async def close_session_and_container(session_id):
+async def close_session_and_container(request: Request, session_id):
+    denied = authorize_session_request(request, session_id)
+    if denied:
+        return denied
     with db_access_lock:
         session = orm_session_maker()
         s = session.query(AppSession).get(session_id)
@@ -917,10 +916,20 @@ async def close_session_and_container(session_id):
             # Update nginx.conf and reread Nginx configuration
             await refresh_nginx(container_orchestrator, session, nginx_config_path, domain, app_hub_address)
             session.close()
-            return RedirectResponse(url="/", status_code=302)
+            # The session this cookie names no longer exists; leaving it set makes every later
+            # request look like it belongs to a dead session. Drop it so "/" is a clean login page.
+            response = RedirectResponse(url="/", status_code=302)
+            response.delete_cookie("source")
+            return response
         else:
             session.close()
-            raise Exception(f"cant remove container user expired")
+            # Already gone -- a double-click on "Close session", a page refresh, or a session the
+            # culler reaped first. The user wants the login page either way; raising here produced
+            # a 500 instead.
+            logger.info(f"close: session {session_id} no longer exists, redirecting to login")
+            response = RedirectResponse(url="/", status_code=302)
+            response.delete_cookie("source")
+            return response
 
 # HTML of session
 # Main page, redirected from Google Auth HTML 
@@ -1021,7 +1030,7 @@ def refresh_index_html(sess,id, proto="http", admin=True, write_to_file=True):
 
     return _
 
-def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=True, write_to_file=True):
+def refresh_manage_session_html(sess_uuid, sess, page, proto="http", admin=True, write_to_file=True):
     s_local = sess.query(AppSession).get(sess_uuid)
     if not s_local:
         _ = f"""
@@ -1256,24 +1265,14 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     """
+    # Rows are collected here and the table is emitted once, after the loop. The loop body also
+    # produces the shared-session gallery below, so opening <table> before it would swallow that
+    # markup into <tbody>. Until now each session emitted its own complete table, <thead> included,
+    # which only looked right while exactly one session existed.
+    session_rows = ""
     for s in sess.query(AppSession).all():
             if is_super_admin:
-              _ +=  f"""
-
-<table>
-    <thead>
-        <tr>
-            <th>UUID</th>
-            <th>Creation</th>
-            <th>Last activity</th>
-            <th>User</th>
-            <th>Email</th>
-            <th>Container</th>
-            <th>Restart</th>
-            <th>GPU</th>
-        </tr>
-    </thead>
-    <tbody>
+              session_rows += f"""
         <tr>
             <td>{ s.uuid }</td>
             <td>{ s.created_at }</td>
@@ -1294,8 +1293,6 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
                 </form>
             </td>
         </tr>
-    </tbody>
-    </table>
     """
             if admin or s.info["shared"]:
                 # Section doing reverse proxy magic
@@ -1326,6 +1323,28 @@ def refresh_manage_session_html(lst,sess_uuid,sess,page, proto="http", admin=Tru
     </main>
     </div>
         """
+    # One table for every session, rather than one table per session. Guarding on session_rows too
+    # keeps a lone <thead> off the page when there is nothing to list.
+    if is_super_admin and session_rows:
+        _ += f"""
+<table>
+    <thead>
+        <tr>
+            <th>UUID</th>
+            <th>Creation</th>
+            <th>Last activity</th>
+            <th>User</th>
+            <th>Email</th>
+            <th>Container</th>
+            <th>Restart</th>
+            <th>GPU</th>
+        </tr>
+    </thead>
+    <tbody>
+    {session_rows}
+    </tbody>
+</table>
+    """
     if index_path and write_to_file:
         with open(index_path, "wt") as f:
             f.write(_)

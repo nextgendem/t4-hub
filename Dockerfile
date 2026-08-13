@@ -55,4 +55,9 @@ EXPOSE 8080
 
 COPY app_hub_local.env /app/.env
 COPY proxy /app/proxy
+# The Jinja2 template for user-session Deployments. APP_MANIFEST_TEMPLATE resolves it relative to
+# WORKDIR /app, so it must be in the image: it is application code, not configuration. Deployments
+# that hostPath-mount the source tree over /app (see kubernetes/overlays/k3s-local) masked its
+# absence; anywhere else, the first session spawn died with FileNotFoundError.
+COPY app-deployment-template2.yaml /app/app-deployment-template2.yaml
 COPY apphub /app/apphub

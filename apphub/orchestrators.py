@@ -228,6 +228,14 @@ class Kubernetes(IContainerOrchestrator):
         self._nfs_server = os.getenv("NFS_SERVER", None)
         self._storage_class = os.getenv("STORAGE_CLASS", "gp3")
         self._namespace = os.getenv("K8S_NAMESPACE", "default")
+        # Session sizing. The previous hardcoded 10-core request left sessions Pending on any
+        # ordinary node; memory was unbounded, so one session could evict its neighbours.
+        self._cpu_requested = os.getenv("T4_SESSION_CPU_REQUESTED", "1")
+        self._cpu_limit = os.getenv("T4_SESSION_CPU_LIMIT", "4")
+        self._mem_requested = os.getenv("T4_SESSION_MEM_REQUESTED", "1Gi")
+        self._mem_limit = os.getenv("T4_SESSION_MEM_LIMIT", "4Gi")
+        # "Never" only works where the image was imported into every node's containerd by hand.
+        self._image_pull_policy = os.getenv("IMAGE_PULL_POLICY", "IfNotPresent")
 
     def get_valid_name(self, name):
         # Replace "_" by "-"
@@ -267,9 +275,11 @@ class Kubernetes(IContainerOrchestrator):
             return None
 
     def _container_action(self, container_name, image_name, vol_dict, network_id, uid, use_gpu = False, operation="apply"):
-        # assign cpu resource to pod or container https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/ 
-        ncores_cpu_limit = "15" # no podrá usar más de esto
-        ncores_cpu_requested = "10" # cpu garanztizada
+        # assign cpu resource to pod or container https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/
+        ncores_cpu_limit = self._cpu_limit  # no podrá usar más de esto
+        ncores_cpu_requested = self._cpu_requested  # cpu garanztizada
+        mem_limit_value = self._mem_limit
+        mem_requested_value = self._mem_requested
 
         # Use storage abstraction module to generate volumes
         from apphub.storage import get_storage_config, ensure_local_storage_directories
@@ -302,7 +312,8 @@ class Kubernetes(IContainerOrchestrator):
                     logger.warning(f"Could not create storage directories: {e}")
 
         if use_gpu:
-            indent = " "*16
+            # 12 spaces, the same as the cpu/memory keys: siblings of a YAML mapping must line up.
+            indent = " "*12
             nvidia_gpu = f"{indent}nvidia.com/gpu: 1"
             indent = " "*6
             ncores_cpu_requested = "0.5"
@@ -320,18 +331,18 @@ class Kubernetes(IContainerOrchestrator):
         indent_field = " " * 12     # Indentation for cpu/gpu under limits
         cpu_limit = f'{indent_field}cpu: "{ncores_cpu_limit}"'
         cpu_requested = f'{indent_field}cpu: "{ncores_cpu_requested}"'
+        mem_limit = f'{indent_field}memory: "{mem_limit_value}"' if mem_limit_value else ""
+        mem_requested = f'{indent_field}memory: "{mem_requested_value}"' if mem_requested_value else ""
 
 
         if "cpusinlimite" in container_name:
             cpu_limit = ""
 
-
-        if nvidia_gpu=="" and cpu_limit=="":
-            limits = ""
-        else:
-            limits = f"""{indent_resource}limits:
-{cpu_limit}
-{nvidia_gpu}"""
+        # Join only the non-empty lines: a blank line inside a YAML mapping is tolerated, but an
+        # empty "limits:" block is not, and the GPU line is absent on every non-GPU session.
+        limit_lines = [line for line in (cpu_limit, mem_limit, nvidia_gpu) if line]
+        limits = "\n".join([f"{indent_resource}limits:"] + limit_lines) if limit_lines else ""
+        cpu_requested = "\n".join([line for line in (cpu_requested, mem_requested) if line])
 
         def escape_for_sed_origin(text):
             """ Escapes special characters in a string for use with sed, including single quotes. """
@@ -377,6 +388,7 @@ class Kubernetes(IContainerOrchestrator):
                 container_vols=container_vols,
                 mount_nfs_base=self._storage_base,  # Use configured storage base path
                 image_name=image_name,
+                image_pull_policy=self._image_pull_policy,
                 patches=patches,
                 limits=limits,
                 cpu_requested=cpu_requested,
@@ -552,9 +564,22 @@ class Kubernetes(IContainerOrchestrator):
 
     def execute_cmd_in_nginx_container(self, container_name, cmd):
         # "container_name" is ignored, always "nginx-container"
+        #
+        # Deliberately NOT routed through _exec_kubectl: that helper feeds stdout to
+        # pandas.read_table, and `nginx -s reload` writes nothing to stdout (its notices go to
+        # stderr). The empty table raises, the bare except returns None, and the caller reads None
+        # as "reload failed" and retries -- ten reloads in ~3 seconds, cycling nginx workers hard
+        # enough to drop whatever request triggered the refresh (a POST /close would die with
+        # ERR_NETWORK_CHANGED instead of following its redirect).
         pod_name = os.getenv("POD_NAME", "proxy-app-hub")
-        _ = ["exec", pod_name, "-c", "nginx-container", "--"] + ["sh", "-c", cmd]
-        return Kubernetes._exec_kubectl("Exec command in NGINX container", _)
+        argv = ["kubectl", "exec", pod_name, "-c", "nginx-container", "--", "sh", "-c", cmd]
+        logger.debug(f"CMD Exec command in NGINX container: {' '.join(argv)}")
+        proc = subprocess.run(argv, capture_output=True, text=True)
+        logger.debug(f"  OUTPUT: {proc.stdout}\n  ERROR: {proc.stderr}\n  RC: {proc.returncode}\n----------------")
+        if proc.returncode != 0:
+            return None
+        # Truthy on success, so the caller stops retrying. Success is commonly empty stdout.
+        return proc.stdout or True
 
     def start_base_containers(self):
         """
