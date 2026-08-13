@@ -99,6 +99,14 @@ orm_session_maker = create_session_factory(engine)
 # runs gunicorn with a single worker. Keep SQLite and `--workers 1` together.
 db_access_lock = nullcontext()
 
+# Serialises the "does this user already have a session?" check with the insert that follows.
+# db_access_lock above is a no-op, so without this two concurrent /oauth2/callback requests -- a
+# double click, or the browser retrying -- both find no session, both launch, and the second one
+# hits `UNIQUE constraint failed: sessions.email` on commit. An asyncio.Lock is the right primitive
+# here: it yields to the event loop instead of blocking it, which is what made the previous
+# multiprocessing.Lock deadlock.
+session_create_lock = asyncio.Lock()
+
 if co_str == "docker_compose":
     network_id = create_docker_network(network_name)
     CONTAINER_NAME_PREFIX = "h__app__"
@@ -588,10 +596,15 @@ async def auth_google(code: str, request: Request):
     else:
         gpu = False
     if await can_open_session(username):
-        with db_access_lock:
+        async with session_create_lock:
             session = orm_session_maker()
             container_launched = False
             try:
+                # orm_session_maker is a scoped_session, so this call can hand back a Session whose
+                # transaction began before another request committed. Under SQLite that snapshot
+                # hides the row and the lookup below wrongly concludes "no session yet". Ending the
+                # transaction first makes the query read current data.
+                session.rollback()
                 s = session.query(AppSession).filter(AppSession.user == username).first()
                 if not s:
                     # Create new session (IF there is room)
@@ -625,6 +638,20 @@ async def auth_google(code: str, request: Request):
                                                             <p>Cannot open a new session, {max_sessions} reached. Please close other sessions</p>
                                                             </body>
                                                         </html>""", status_code=401)
+            except exc.IntegrityError:
+                # `user` and `email` are both UNIQUE, so this means a session for this user already
+                # exists -- another request won the race, or a previous attempt committed a row this
+                # transaction could not see. Adopt the existing session instead of failing with a
+                # 500 and leaving the winner's row behind with no way back to it.
+                #
+                # Deliberately NOT calling stop_remove_container: container_name is derived from the
+                # username, so "our" Deployment and the winner's are the same object. Removing it
+                # here would tear down the session we are about to hand back.
+                logger.warning(f"Session for {username} already exists; adopting it instead of creating a duplicate")
+                session.rollback()
+                s = session.query(AppSession).filter(AppSession.user == username).first()
+                if s is None:
+                    raise
             except exc.SQLAlchemyError as e:
                 if container_launched:
                     stop_remove_container(s.container_name)
