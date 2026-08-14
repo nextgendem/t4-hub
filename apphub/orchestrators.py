@@ -365,6 +365,9 @@ class Kubernetes(IContainerOrchestrator):
             """ Escapes a string so it can be embedded in a YAML file, assuming the string is enclosed in double quotes. """
             # Doubling backslashes
             escaped_text = text.replace("\\", "\\\\")
+            # Double quotes must be escaped too (the patches end up inside a YAML double-quoted scalar).
+            # Done after the backslash doubling, so the backslash added here is not doubled in turn.
+            escaped_text = escaped_text.replace('"', '\\"')
             # Since the string will be in double quotes, no need to escape single quotes
             return escaped_text
 
@@ -372,11 +375,23 @@ class Kubernetes(IContainerOrchestrator):
         src_code = escape_for_sed_origin("document.getElementById('noVNC_status').style")  # Unique
         new_code = escape_for_sed_replace("UI._sessionTimeoutInterval = setInterval(function () {UI.rfb.sendKey(1, null, false);}, 6000);")
 
+        # KASM/noVNC on Firefox: navigator.clipboard.read exists (FF >= 125), so supportsBinaryClipboard()
+        # returns true, and connect() then calls navigator.permissions.query({name: "clipboard-read"}) --
+        # a permission name Firefox rejects. The call has no .catch(), so the TypeError escapes and the
+        # session shows "noVNC encountered an error" instead of the desktop. Disable binary clipboard on
+        # Firefox (Kasm documents it as Chromium-only anyway); Firefox falls back to the Clipboard panel.
+        # isFirefox() is defined in the same bundle module, a few lines above the patched one.
+        clip_src = escape_for_sed_origin("typeof navigator.clipboard.read")  # Unique
+        clip_new = escape_for_sed_replace(
+            '  return !isFirefox() && navigator.clipboard && typeof navigator.clipboard.read === "function";')
+
         # To test: docker
         patches = (f"sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/app/ui.js && "
                    f"sed -i 's/websockify/{uid}-ws/g' /usr/share/kasmvnc/www/dist/main.bundle.js && "
                    f"sed -i '/{src_code}/c\\{new_code}' /usr/share/kasmvnc/www/app/ui.js && "
-                   f"sed -i '/{src_code}/c\\{new_code}' /usr/share/kasmvnc/www/dist/main.bundle.js")
+                   f"sed -i '/{src_code}/c\\{new_code}' /usr/share/kasmvnc/www/dist/main.bundle.js && "
+                   # Only the bundle is served to the browser; core/util/browser.js is not
+                   f"sed -i '/{clip_src}/c\\{clip_new}' /usr/share/kasmvnc/www/dist/main.bundle.js")
         patches = escape_for_yaml(patches)
 
         # Load the manifest from a file with replaceable strings
