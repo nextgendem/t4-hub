@@ -1,5 +1,6 @@
 import abc
 import asyncio
+import base64
 import json
 import os
 import re
@@ -236,6 +237,10 @@ class Kubernetes(IContainerOrchestrator):
         self._mem_limit = os.getenv("T4_SESSION_MEM_LIMIT", "4Gi")
         # "Never" only works where the image was imported into every node's containerd by hand.
         self._image_pull_policy = os.getenv("IMAGE_PULL_POLICY", "IfNotPresent")
+        # Optional transformer4 config file, provided via t4-hub's own ConfigMap (mounted into
+        # this pod) and copied into every session container. Lets the properties be edited per
+        # environment/overlay without rebuilding the t4-novnc image.
+        self._t4_properties_path = os.getenv("T4_PROPERTIES_PATH", None)
 
     def get_valid_name(self, name):
         # Replace "_" by "-"
@@ -392,6 +397,23 @@ class Kubernetes(IContainerOrchestrator):
                    f"sed -i '/{src_code}/c\\{new_code}' /usr/share/kasmvnc/www/dist/main.bundle.js && "
                    # Only the bundle is served to the browser; core/util/browser.js is not
                    f"sed -i '/{clip_src}/c\\{clip_new}' /usr/share/kasmvnc/www/dist/main.bundle.js")
+
+        # Copy the transformer4 properties (read from t4-hub's own ConfigMap-mounted file) into
+        # the session container. Base64 round-trip avoids having to escape arbitrary file content
+        # (quotes, '&&', newlines, ...) for both the shell and the surrounding YAML.
+        # Target path: Transformer4's Utils.getProperty() resolves it from Constants.DEFAULT_DIRECTORY,
+        # which is netbeans.user/.. (netbeans.user = app/../conf, i.e. .../transformer4/conf) -- so
+        # the file actually read is $STARTUPDIR/transformer4/t4.properties, NOT /app/transformer4/...
+        # (confirmed by decompiling commons-t4.jar's Utils.class in the t4-novnc image).
+        if self._t4_properties_path and os.path.isfile(self._t4_properties_path):
+            try:
+                with open(self._t4_properties_path, "r") as pf:
+                    t4_properties_b64 = base64.b64encode(pf.read().encode()).decode()
+                patches += (" && mkdir -p /dockerstartup/transformer4 && "
+                            f"echo {t4_properties_b64} | base64 -d > /dockerstartup/transformer4/t4.properties")
+            except Exception as e:
+                logger.warning(f"Could not read T4_PROPERTIES_PATH ({self._t4_properties_path}): {e}")
+
         patches = escape_for_yaml(patches)
 
         # Load the manifest from a file with replaceable strings
