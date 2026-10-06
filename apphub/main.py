@@ -451,21 +451,22 @@ async def auth_google(code: str, request: Request):
                                             </style>
                                     <body id="myPage">
                                     <!-- Image Header -->
-                                    <header class="p-2 text-bg-dark">
+                                    <header class="p-2 text-white" style="background-color: #016959">
                                         <div class="container">
                                           <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
                                             <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-                                              <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+                                              <img class="me-3" src="/static/images/nesomic_symbol.png" alt="Nesomic" width="40">
                                             </a>
-                                            <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+                                            <span class="nesomic-wordmark me-5 me-lg-auto" style="display: inline-block; height: 28px; aspect-ratio: 631 / 132; color: #FFFFFF;"></span>
                                             <div class="text-end">
-                                              <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-                                              <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">
+                                              <a href="https://demiurge.nesomic.org/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+                                              <img class="me-3" src="/static/images/demiurge_logo_white.png" title="Demiurge" alt="logo_nextgem" width="40">
                                               </a>
                                             </div>
                                           </div>
                                         </div>
                                       </header>
+<script src="/static/nesomic/wordmark.js"></script><script src="/static/nesomic/brand.js"></script>
                                     <html>
                                       <head>
                                         <title>Login Failed</title>
@@ -549,21 +550,22 @@ async def auth_google(code: str, request: Request):
                                             </style>
                                         <body id="myPage">
                                         <!-- Image Header -->
-                                        <header class="p-2 text-bg-dark">                                 
+                                        <header class="p-2 text-white" style="background-color: #016959">                                 
                                             <div class="container">
                                               <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
                                                 <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-                                                  <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+                                                  <img class="me-3" src="/static/images/nesomic_symbol.png" alt="Nesomic" width="40">
                                                 </a>
-                                                <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+                                                <span class="nesomic-wordmark me-5 me-lg-auto" style="display: inline-block; height: 28px; aspect-ratio: 631 / 132; color: #FFFFFF;"></span>
                                                 <div class="text-end">
-                                                  <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-                                                  <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">
+                                                  <a href="https://demiurge.nesomic.org/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+                                                  <img class="me-3" src="/static/images/demiurge_logo_white.png" title="Demiurge" alt="logo_nextgem" width="40">
                                                   </a>
                                                 </div>
                                               </div>
                                             </div>
                                           </header>
+<script src="/static/nesomic/wordmark.js"></script><script src="/static/nesomic/brand.js"></script>
                                         <html>
                                           <head>
                                             <title>Login Failed</title>
@@ -683,21 +685,22 @@ async def auth_google(code: str, request: Request):
                                             </style>
                                         <body id="myPage">
                                         <!-- Image Header -->
-                                        <header class="p-2 text-bg-dark">
+                                        <header class="p-2 text-white" style="background-color: #016959">
                                             <div class="container">
                                               <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
                                                 <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-                                                  <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+                                                  <img class="me-3" src="/static/images/nesomic_symbol.png" alt="Nesomic" width="40">
                                                 </a>
-                                                <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+                                                <span class="nesomic-wordmark me-5 me-lg-auto" style="display: inline-block; height: 28px; aspect-ratio: 631 / 132; color: #FFFFFF;"></span>
                                                 <div class="text-end">
-                                                  <a href="https://demiurge.nextgendem.eu/" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
-                                                    <img src="/static/images/logo_demiurge.png" alt="mdo" width="32" height="32" class="rounded-circle">
+                                                  <a href="https://demiurge.nesomic.org/" class="d-block link-body-emphasis text-decoration-none" data-bs-toggle="dropdown" aria-expanded="true">
+                                                    <img src="/static/images/demiurge_logo_white.png" title="Demiurge" alt="mdo" width="32" height="32" class="rounded-circle">
                                                   </a>
                                                 </div>
                                               </div>
                                             </div>
                                           </header>
+<script src="/static/nesomic/wordmark.js"></script><script src="/static/nesomic/brand.js"></script>
                                         <html>
                                           <head>
                                             <title>Login Failed</title>
@@ -987,13 +990,13 @@ def refresh_index_html(sess,id, proto="http", admin=True, write_to_file=True):
 </head>
 <body id="myPage">
 <!-- Image Header -->
-<header class="p-2 text-bg-dark">
+<header class="p-2 text-white" style="background-color: #016959">
     <div class="container">
       <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
         <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-          <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+          <img class="me-3" src="/static/images/nesomic_symbol.png" alt="Nesomic" width="40">
         </a>
-        <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+        <span class="nesomic-wordmark me-5 me-lg-auto" style="display: inline-block; height: 28px; aspect-ratio: 631 / 132; color: #FFFFFF;"></span>
         """
     if id != "0":
         _ += f"""
@@ -1005,13 +1008,14 @@ def refresh_index_html(sess,id, proto="http", admin=True, write_to_file=True):
 
     _ += """
         <div class="text-end">
-          <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-            <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">
+          <a href="https://demiurge.nesomic.org/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+            <img class="me-3" src="/static/images/demiurge_logo_white.png" title="Demiurge" alt="logo_nextgem" width="40">
           </a>
         </div>
       </div>
     </div>
   </header>
+<script src="/static/nesomic/wordmark.js"></script><script src="/static/nesomic/brand.js"></script>
 <main class="d-flex flex-nowrap">
 <div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 250px; min-height: 100vh; max-height: auto">
     <ul class="nav nav-pills flex-column mb-auto">
@@ -1106,25 +1110,26 @@ def refresh_manage_session_html(sess_uuid, sess, page, proto="http", admin=True,
     </style>
 </head>
 <!-- Image Header -->
-<header class="p-2 text-bg-dark">
+<header class="p-2 text-white" style="background-color: #016959">
     <div class="container">
       <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
         <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-          <img class="me-3" src="/static/images/LogoNEXTGENDEM_Color_cropped.png" alt="logo_nextgem" width="40">
+          <img class="me-3" src="/static/images/nesomic_symbol.png" alt="Nesomic" width="40">
         </a>
-        <span class="me-5 me-lg-auto fs-4 font-weight-bold" style="color:#FFFFFF;font-weight: 500;">NEXTGENDEM</span>
+        <span class="nesomic-wordmark me-5 me-lg-auto" style="display: inline-block; height: 28px; aspect-ratio: 631 / 132; color: #FFFFFF;"></span>
         <select id="rolViewChange" class="form-select mr-2" style="max-width: 15vh" onchange="this.options[this.selectedIndex].value && (window.location = this.options[this.selectedIndex].value);">
             <option selected value="/sessions/{sess_uuid}?page=main">Admin</option>
             <option value="/index.html?id={sess_uuid}">Guest</option>
         </select>
         <div class="text-end">
-          <a href="https://demiurge.nextgendem.eu/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
-            <img class="me-3" src="/static/images/logo_demiurge.png" alt="logo_nextgem" width="40">
+          <a href="https://demiurge.nesomic.org/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+            <img class="me-3" src="/static/images/demiurge_logo_white.png" title="Demiurge" alt="logo_nextgem" width="40">
           </a>
         </div>
       </div>
     </div>
   </header>
+<script src="/static/nesomic/wordmark.js"></script><script src="/static/nesomic/brand.js"></script>
 <main class="d-flex flex-nowrap">
 <div class="d-flex flex-column flex-shrink-0 p-3 text-bg-dark" style="width: 200px;min-height: 100vh; max-height: auto">
     <ul class="nav nav-pills flex-column mb-auto">
